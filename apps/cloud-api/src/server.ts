@@ -30,11 +30,14 @@ app.use('/api/admin',
 
 app.use(errorHandler)
 
-app.listen(PORT, () => {
-  logger.info(`Cloud API listening on port ${PORT}`)
-  logger.info(`Public API: /api/public`)
-  logger.info(`Device API: /api/device`)
-  logger.info(`Admin API: /api/admin`)
-})
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  const PORT = parseInt(process.env.PORT || '4001', 10)
+  app.listen(PORT, () => {
+    logger.info(`Cloud API listening on port ${PORT}`)
+    logger.info(`Public API: /api/public`)
+    logger.info(`Device API: /api/device`)
+    logger.info(`Admin API: /api/admin`)
+  })
+}
 
-export { app }
+export default app

@@ -10,6 +10,19 @@
     "test": "turbo test",
     "clean": "turbo clean && rm -rf node_modules"
   },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.712.0",
+    "@aws-sdk/s3-request-presigner": "^3.712.0",
+    "@chamera/frame-engine": "workspace:*",
+    "@chamera/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.47.10",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "uuid": "^11.0.3",
+    "zod": "^3.24.1"
+  },
   "devDependencies": {
     "turbo": "^2.3.3",
     "typescript": "^5.7.2"
