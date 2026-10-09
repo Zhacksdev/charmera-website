@@ -3,7 +3,7 @@
   "services": {
     "cloud-api": {
       "root": "apps/cloud-api",
-      "framework": null,
+      "framework": "express",
       "runtime": "nodejs20.x",
       "buildCommand": "cd ../.. && pnpm install && cd apps/cloud-api && npm run build",
       "outputDirectory": "dist"
