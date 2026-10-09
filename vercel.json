@@ -3,8 +3,7 @@
   "services": {
     "cloud-api": {
       "root": "apps/cloud-api",
-      "framework": null,
-      "runtime": "nodejs20.x",
+      "framework": "express",
       "entrypoint": "index.ts"
     },
     "download": {
