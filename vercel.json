@@ -3,9 +3,9 @@
   "services": {
     "cloud-api": {
       "root": "apps/cloud-api",
-      "framework": "express",
-      "entrypoint": "dist/server.js",
-      "buildCommand": "cd ../.. && pnpm install --prod=false && pnpm --filter @chamera/cloud-api... run build"
+      "framework": null,
+      "runtime": "nodejs20.x",
+      "entrypoint": "index.ts"
     },
     "download": {
       "root": "apps/download",
