@@ -1,0 +1,8 @@
+https://booth.home.arpa:8443 {
+	tls internal
+
+	@booth_api path /api/* /health
+	reverse_proxy @booth_api 127.0.0.1:4000
+
+	reverse_proxy 127.0.0.1:3000
+}

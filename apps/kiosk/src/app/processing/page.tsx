@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || 'http://127.0.0.1:4000'
+const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
 export default function ProcessingPage() {
   return <Suspense fallback={<main className="flex min-h-screen items-center justify-center text-cream">Memproses hasil...</main>}><ProcessingContent /></Suspense>

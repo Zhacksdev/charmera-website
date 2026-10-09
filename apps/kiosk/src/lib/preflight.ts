@@ -85,7 +85,7 @@ export async function checkCamera(): Promise<PreflightResult['camera']> {
 export async function checkDisk(): Promise<PreflightResult['disk']> {
   // cek disk fisik via booth-api (statfs) — navigator.storage.estimate()
   // hanya menunjukkan kuota origin browser, bukan disk sebenarnya
-  const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || 'http://127.0.0.1:4000'
+  const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
   try {
     const res = await fetch(`${BOOTH_API}/api/status`)
@@ -133,7 +133,7 @@ export async function checkDisk(): Promise<PreflightResult['disk']> {
 }
 
 export async function checkConfig(): Promise<PreflightResult['config']> {
-  const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || 'http://127.0.0.1:4000'
+  const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
   try {
     const res = await fetch(`${BOOTH_API}/api/status`)

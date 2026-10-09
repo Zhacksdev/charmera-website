@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useKioskStore } from '../../stores/kioskStore'
 import { useCamera, useClipRecorder, useStageTimer } from '../../hooks'
 
-const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || 'http://127.0.0.1:4000'
+const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
 export default function ActionPage() {
   return <Suspense fallback={<main className="flex min-h-screen items-center justify-center text-cream">Menyiapkan kamera...</main>}><ActionContent /></Suspense>

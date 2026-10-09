@@ -12,7 +12,7 @@ Panduan menjalankan sistem secara lokal (development) sampai siap dipakai di boo
 | pnpm | 9+ | Ya |
 | ffmpeg | 8.x | Hanya untuk render GIF & Live Photo |
 | Printer 4R + driver | - | Hanya untuk mode print fisik |
-| Browser | Chrome/Edge terbaru | Ya |
+| Browser | Chrome/Edge terbaru; Safari iPad untuk mode tablet HTTPS | Ya |
 
 ```bash
 # Install dependensi sekali di root
@@ -113,6 +113,87 @@ PENTING: akses **harus via `localhost`**, bukan IP. `getUserMedia` (kamera) dibl
 ```bash
 google-chrome --unsafely-treat-insecure-origin-as-secure=http://192.168.1.10:3000 --kiosk http://192.168.1.10:3000
 ```
+
+---
+
+## MVP Tablet Safari di Wi-Fi Booth
+
+Setup ini membuat tablet dan laptop booth memakai satu origin HTTPS. Booth API tetap hanya bind ke `127.0.0.1`; Caddy menjadi reverse proxy lokal. Jangan arahkan API booth ke internet publik: endpoint sesi booth belum memakai autentikasi jaringan.
+
+### Prasyarat
+
+- Tablet dan laptop booth berada di Wi-Fi/LAN yang sama.
+- IP laptop booth dibuat tetap melalui DHCP reservation di router.
+- DNS lokal/router punya record `booth.home.arpa` yang menunjuk ke IP laptop booth. Jika router tidak mendukung local DNS record, siapkan DNS lokal yang bisa digunakan tablet.
+- Port TCP `8443` dari subnet Wi-Fi booth boleh masuk ke laptop; jangan forward port ini dari router ke internet atau jaringan tamu.
+- Sertifikat CA lokal Caddy dipasang dan dipercaya oleh iPad. Safari tidak menerima sertifikat internal sebelum CA dipercaya.
+
+### Jalankan
+
+1. Di router, buat DHCP reservation untuk laptop booth dan DNS record lokal `booth.home.arpa` ke IP laptop itu.
+2. Instal Caddy di laptop booth. Linux x86_64:
+
+	```bash
+	mkdir -p "$HOME/.local/bin"
+	curl -fsSL 'https://caddyserver.com/api/download?os=linux&arch=amd64' -o "$HOME/.local/bin/caddy"
+	chmod 755 "$HOME/.local/bin/caddy"
+	"$HOME/.local/bin/caddy" version
+	```
+
+	Untuk Linux ARM64, ganti `arch=amd64` menjadi `arch=arm64`. Caddyfile MVP menggunakan port `8443`, jadi dapat dijalankan sebagai user biasa tanpa membuka port privileged `443`.
+
+3. Hapus `NEXT_PUBLIC_BOOTH_API_URL` dari `apps/kiosk/.env.local` jika sebelumnya diisi. Kiosk memakai path relatif `/api/...`; Next meneruskan path itu ke Booth API melalui rewrite server-side.
+4. Jalankan Booth API di terminal pertama:
+
+	```bash
+	pnpm --filter @chamera/booth-api dev
+	```
+
+	Pastikan log menunjukkan `Booth API listening on http://127.0.0.1:4000`.
+
+5. Jalankan kiosk di terminal kedua:
+
+	```bash
+	pnpm --filter @chamera/kiosk dev
+	```
+
+	Pastikan kiosk berjalan di port `3000`. Jika port itu sudah digunakan, hentikan instance kiosk lama atau sesuaikan upstream pada Caddyfile.
+
+6. Jalankan Caddy dari root repository di terminal ketiga:
+
+	```bash
+	~/.local/bin/caddy run --config deploy/tablet/Caddyfile
+	```
+
+	Tunggu sampai Caddy berhasil start dan membuat sertifikat internal untuk `booth.home.arpa`.
+
+7. Ambil **sertifikat root publik** Caddy di laptop:
+
+	```bash
+	find "${XDG_DATA_HOME:-$HOME/.local/share}/caddy" -type f -path '*/pki/authorities/local/root.crt' -print
+	```
+
+	Transfer hanya `root.crt` ke iPad (misalnya melalui AirDrop). Jangan transfer `root.key`. Di iPad buka file sertifikat untuk memasang configuration profile, kemudian aktifkan kepercayaan penuh di **Settings → General → About → Certificate Trust Settings**.
+
+8. Pastikan Safari/iPad memakai DNS Wi-Fi yang memiliki record `booth.home.arpa`, buka `https://booth.home.arpa:8443`, lalu izinkan akses kamera.
+
+Caddy meneruskan `/api/*` dan `/health` ke `127.0.0.1:4000`; semua route lain diteruskan ke kiosk pada port `3000`. Uji dari tablet:
+
+```text
+https://booth.home.arpa:8443/health      -> JSON health Booth API
+https://booth.home.arpa:8443/api/status  -> status/config booth
+https://booth.home.arpa:8443/            -> kiosk customer
+```
+
+Jika nama host tidak ditemukan, periksa local DNS/router. Jika Safari menunjukkan sertifikat tidak dipercaya, CA `root.crt` belum dipasang atau **Certificate Trust Settings** belum diaktifkan.
+
+Jangan isi `NEXT_PUBLIC_BOOTH_API_URL` dengan `127.0.0.1` untuk mode tablet: alamat loopback akan menunjuk ke tablet, bukan laptop booth. URL tersebut sebaiknya tidak disetel agar request API memakai origin HTTPS kiosk yang sama.
+
+### Catatan Safari
+
+Foto memakai kamera browser dan membutuhkan HTTPS tepercaya. Perekam klip saat ini meminta `video/webm`; Safari mungkin tidak mendukung format tersebut. Uji kamera dan satu sesi penuh pada iPad target. Foto diam dapat berjalan, tetapi GIF/Live Photo mungkin memerlukan penyesuaian format recorder sebelum digunakan.
+
+URL QR download adalah pengaturan terpisah: isi `PUBLIC_BASE_URL` dengan URL **Download app** yang benar-benar sudah dideploy, bukan URL kiosk atau Admin.
 
 ---
 

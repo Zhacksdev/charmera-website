@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useKioskStore } from '../stores/kioskStore'
 import { usePreflight } from '../hooks'
 
-const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || 'http://127.0.0.1:4000'
+const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
 export default function HomePage() {
   const router = useRouter()

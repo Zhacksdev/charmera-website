@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import QRCode from 'qrcode'
 
-const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || 'http://127.0.0.1:4000'
+const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 const QR_TIMER = 15
 
 export default function ResultPage() {
