@@ -1,0 +1,76 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "cloud-api": {
+      "root": "apps/cloud-api",
+      "framework": null,
+      "runtime": "nodejs20.x",
+      "buildCommand": "cd ../.. && pnpm install && cd apps/cloud-api && npm run build",
+      "outputDirectory": "dist"
+    },
+    "download": {
+      "root": "apps/download",
+      "framework": "nextjs",
+      "buildCommand": "cd ../.. && pnpm install && cd apps/download && npm run build",
+      "outputDirectory": ".next",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "cloud-api",
+          "format": "url",
+          "env": "PUBLIC_API_URL"
+        }
+      ]
+    },
+    "admin": {
+      "root": "apps/admin",
+      "framework": "nextjs",
+      "buildCommand": "cd ../.. && pnpm install && cd apps/admin && npm run build",
+      "outputDirectory": ".next",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "cloud-api",
+          "format": "url",
+          "env": "ADMIN_API_URL"
+        }
+      ]
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/public/(.*)",
+      "destination": { "service": "cloud-api", "path": "/api/public/$1" }
+    },
+    {
+      "source": "/api/device/(.*)",
+      "destination": { "service": "cloud-api", "path": "/api/device/$1" }
+    },
+    {
+      "source": "/api/admin/(.*)",
+      "destination": { "service": "cloud-api", "path": "/api/admin/$1" }
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": { "service": "cloud-api", "path": "/api/$1" }
+    },
+    {
+      "source": "/download/(.*)",
+      "destination": { "service": "download", "path": "/download/$1" }
+    },
+    {
+      "source": "/((?!api/|download/).*)",
+      "destination": { "service": "admin", "path": "/$1" }
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-XSS-Protection", "value": "1; mode=block" }
+      ]
+    }
+  ]
+}
