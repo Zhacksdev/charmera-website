@@ -4,13 +4,13 @@
     "cloud-api": {
       "root": "apps/cloud-api",
       "framework": "express",
-      "buildCommand": "cd ../.. && pnpm install && cd apps/cloud-api && npm run build",
+      "buildCommand": "cd ../.. && pnpm install --prod=false && cd apps/cloud-api && npm run build",
       "outputDirectory": "dist"
     },
     "download": {
       "root": "apps/download",
       "framework": "nextjs",
-      "buildCommand": "cd ../.. && pnpm install && cd apps/download && npm run build",
+      "buildCommand": "cd ../.. && pnpm install --prod=false && cd apps/download && npm run build",
       "outputDirectory": ".next",
       "bindings": [
         {
@@ -24,7 +24,7 @@
     "admin": {
       "root": "apps/admin",
       "framework": "nextjs",
-      "buildCommand": "cd ../.. && pnpm install && cd apps/admin && npm run build",
+      "buildCommand": "cd ../.. && pnpm install --prod=false && cd apps/admin && npm run build",
       "outputDirectory": ".next",
       "bindings": [
         {
