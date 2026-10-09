@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "apps/cloud-api/dist/server.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "apps/download/package.json",
+      "use": "@vercel/next"
+    },
+    {
+      "src": "apps/admin/package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/apps/cloud-api/dist/server.js"
+    },
+    {
+      "src": "/download/(.*)",
+      "dest": "/apps/download/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/apps/admin/$1"
+    }
+  ]
+}
