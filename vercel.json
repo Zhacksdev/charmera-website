@@ -4,7 +4,7 @@
     "cloud-api": {
       "root": "apps/cloud-api",
       "framework": "express",
-      "buildCommand": "cd ../.. && pnpm install --prod=false && cd apps/cloud-api && npm run build",
+      "buildCommand": "cd ../.. && pnpm install --prod=false && pnpm --filter @chamera/cloud-api... run build",
       "outputDirectory": "dist"
     },
     "download": {
@@ -24,7 +24,7 @@
     "admin": {
       "root": "apps/admin",
       "framework": "nextjs",
-      "buildCommand": "cd ../.. && pnpm install --prod=false && cd apps/admin && npm run build",
+      "buildCommand": "cd ../.. && pnpm install --prod=false && pnpm --filter @chamera/admin... run build",
       "outputDirectory": ".next",
       "bindings": [
         {
@@ -37,6 +37,10 @@
     }
   },
   "rewrites": [
+    {
+      "source": "/health",
+      "destination": { "service": "cloud-api", "path": "/health" }
+    },
     {
       "source": "/api/public/(.*)",
       "destination": { "service": "cloud-api", "path": "/api/public/$1" }

@@ -12,7 +12,7 @@ const app = express()
 app.use(cors())
 app.use(express.json({ limit: '50mb' }))
 
-app.get('/health', (req, res) => {
+app.get(['/health', '/api/health'], (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
