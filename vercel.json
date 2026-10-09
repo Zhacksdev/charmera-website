@@ -4,8 +4,7 @@
     "cloud-api": {
       "root": "apps/cloud-api",
       "framework": "express",
-      "buildCommand": "cd ../.. && pnpm install --prod=false && pnpm --filter @chamera/cloud-api... run build",
-      "outputDirectory": "dist"
+      "buildCommand": "cd ../.. && pnpm install --prod=false && pnpm --filter @chamera/cloud-api... run build"
     },
     "download": {
       "root": "apps/download",

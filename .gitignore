@@ -8,6 +8,8 @@ dist
 out
 build
 *.tsbuildinfo
+.vercel/
+**/.vercel/
 
 # Environment variables
 .env
