@@ -102,7 +102,8 @@ export function useCamera(options: UseCameraOptions = {}) {
     }
   }, [width, height, facingMode])
 
-  const capturePhoto = useCallback((): Promise<Blob | null> => {
+  /** flip = balik horizontal (mode Non-mirror) — hasil foto sama dengan pratinjau kamera */
+  const capturePhoto = useCallback((flip = false): Promise<Blob | null> => {
     if (!videoRef.current || !isReady) return Promise.resolve(null)
 
     const video = videoRef.current
@@ -113,6 +114,10 @@ export function useCamera(options: UseCameraOptions = {}) {
     const ctx = canvas.getContext('2d')
     if (!ctx) return Promise.resolve(null)
 
+    if (flip) {
+      ctx.translate(canvas.width, 0)
+      ctx.scale(-1, 1)
+    }
     ctx.drawImage(video, 0, 0)
     
     return new Promise((resolve) => {

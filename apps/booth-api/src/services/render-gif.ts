@@ -55,7 +55,7 @@ export async function renderGif(options: RenderGifOptions): Promise<string> {
       .rotate()
       .resize(width, height, { fit: 'cover', position: 'centre' })
       .toBuffer()
-    const frame = await applySharpFilter(sharp(resized), filter, width).png().toBuffer()
+    const frame = await (await applySharpFilter(resized, filter, width)).png().toBuffer()
     const framePath = join(OUTPUTS_DIR, `${sessionId}_frame_${i}.png`)
     await writeFile(framePath, frame)
     framePaths.push(framePath)

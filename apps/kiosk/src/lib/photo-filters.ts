@@ -7,7 +7,8 @@ export const PHOTO_FILTER_OPTIONS: Array<{ id: PhotoFilter; label: string; css: 
   { id: 'bw', label: 'Black & White', css: 'grayscale(1)' },
   { id: 'vintage', label: 'Vintage', css: 'sepia(0.4) contrast(0.9) saturate(0.85) brightness(1.03)' },
   { id: 'sepia', label: 'Sepia', css: 'sepia(1)' },
-  { id: 'smooth', label: 'Smooth', css: 'blur(0.6px) brightness(1.04)' },
+  // shiny: lebih terang & hidup dengan sedikit kilau (render memakai glow), bukan blur
+  { id: 'smooth', label: 'Smooth', css: 'brightness(1.1) saturate(1.15) contrast(1.03)' },
 ]
 
 export function filterCss(filter: PhotoFilter): string {

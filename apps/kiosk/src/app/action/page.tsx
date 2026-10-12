@@ -7,18 +7,17 @@ import { useKioskStore } from '../../stores/kioskStore'
 import { useCamera, useClipRecorder, useStageTimer } from '../../hooks'
 import { FrameComposite } from '../../components/FrameComposite'
 import { shotNumbers } from '../../lib/frame-layout'
+import { enqueueUpload, useUploadStates } from '../../lib/upload-queue'
+import { useMirrorMode } from '../../lib/mirror-mode'
 
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 // jeda sebelum foto pertama (countdown langsung mulai setelah kamera siap) dan antar-foto (ganti gaya)
 const FIRST_SHOT_DELAY_MS = 800
 const NEXT_SHOT_DELAY_MS = 1500
-const UPLOAD_ATTEMPTS = 3
 
 export default function ActionPage() {
   return <Suspense fallback={<main className="flex min-h-screen items-center justify-center text-cream">Menyiapkan kamera...</main>}><ActionContent /></Suspense>
 }
-
-type UploadState = 'uploading' | 'done' | 'failed'
 
 function ActionContent() {
   const router = useRouter()
@@ -43,7 +42,12 @@ function ActionContent() {
   const [timerSnapshot, setTimerSnapshot] = useState<any>(null)
   const [outputMode, setOutputMode] = useState<'photo_only' | 'full'>('photo_only')
   const [captureError, setCaptureError] = useState('')
-  const [uploads, setUploads] = useState<Record<number, UploadState>>({})
+  const uploads = useUploadStates(sessionId)
+  // mode kamera (disimpan di tablet): Non-mirror = dibalik horizontal, Mirror = kamera apa adanya
+  const [mirrorMode, setMirrorMode] = useMirrorMode()
+  const flip = mirrorMode === 'non_mirror'
+  const flipRef = useRef(flip)
+  flipRef.current = flip
   const [continuing, setContinuing] = useState(false)
   const [retakeMode, setRetakeMode] = useState(false)
   const [capturingShot, setCapturingShot] = useState<number | null>(null)
@@ -51,7 +55,6 @@ function ActionContent() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const capturingRef = useRef(false)
-  const uploadPromisesRef = useRef(new Map<number, Promise<boolean>>())
 
   const slots = selectedFrame?.layout?.slots || []
   // slot bernomor sama berbagi satu foto — jumlah jepretan = nomor slot unik
@@ -119,37 +122,12 @@ function ActionContent() {
     return () => clearInterval(interval)
   }, [sessionId, setSession])
 
-  /** Unggah di belakang layar (dengan retry) — tamu tidak menunggu upload sebelum foto berikutnya */
-  const uploadShot = useCallback((slotIndex: number, photoBlob: Blob, clipBlob: Blob | null) => {
-    setUploads((current) => ({ ...current, [slotIndex]: 'uploading' }))
-
-    const run = async (): Promise<boolean> => {
-      for (let attempt = 1; attempt <= UPLOAD_ATTEMPTS; attempt++) {
-        try {
-          const formData = new FormData()
-          formData.append('slot_index', slotIndex.toString())
-          formData.append('photo', photoBlob, `slot_${slotIndex}.jpg`)
-          if (clipBlob) formData.append('clip', clipBlob, `slot_${slotIndex}.${clipBlob.type.includes('mp4') ? 'mp4' : 'webm'}`)
-
-          const res = await fetch(`${BOOTH_API}/api/sessions/${sessionId}/photos`, { method: 'POST', body: formData })
-          if (res.ok) {
-            setUploads((current) => ({ ...current, [slotIndex]: 'done' }))
-            return true
-          }
-          console.error(`Upload slot ${slotIndex} HTTP ${res.status}`)
-        } catch (err) {
-          console.error(`Upload slot ${slotIndex} failed:`, err)
-        }
-        await new Promise((resolve) => setTimeout(resolve, attempt * 1000))
-      }
-      setUploads((current) => ({ ...current, [slotIndex]: 'failed' }))
-      setCaptureError(`Foto ${slotIndex + 1} belum terkirim. Periksa Wi-Fi, lalu ambil ulang foto itu.`)
-      return false
-    }
-
-    const promise = run()
-    uploadPromisesRef.current.set(slotIndex, promise)
-    return promise
+  /** Unggah di belakang layar (antrean tingkat modul, dengan retry) — tamu tidak menunggu upload */
+  const uploadShot = useCallback((slotIndex: number, photoBlob: Blob, clipBlob: Blob | null, flip: boolean) => {
+    if (!sessionId) return
+    void enqueueUpload(sessionId, slotIndex, photoBlob, clipBlob, flip).then((ok) => {
+      if (!ok) setCaptureError(`Foto ${slotIndex + 1} belum terkirim. Periksa Wi-Fi, lalu ambil ulang foto itu.`)
+    })
   }, [sessionId])
 
   const handleCapture = useCallback(async (slotIndex: number) => {
@@ -188,7 +166,9 @@ function ActionContent() {
 
       await new Promise(resolve => setTimeout(resolve, countdownSec * 1000))
 
-      const photoBlob = await capturePhoto()
+      // mode dibaca saat jepret: foto dibalik di sini, klip dibalik booth-api saat render
+      const flipShot = flipRef.current
+      const photoBlob = await capturePhoto(flipShot)
       if (!photoBlob) throw new Error('Failed to capture photo')
 
       const clipBlob = canRecordClip ? await getClipBlob() : null
@@ -199,7 +179,7 @@ function ActionContent() {
         dataUrl: URL.createObjectURL(photoBlob),
         clipDataUrl: clipBlob ? URL.createObjectURL(clipBlob) : undefined
       })
-      void uploadShot(slotIndex, photoBlob, clipBlob)
+      uploadShot(slotIndex, photoBlob, clipBlob, flipShot)
     } catch (err) {
       console.error('Capture failed:', err)
       setCaptureError('Kamera gagal mengambil foto. Coba ulangi.')
@@ -247,12 +227,8 @@ function ActionContent() {
   const handleContinue = useCallback(async () => {
     if (!sessionId || continuing) return
     setContinuing(true)
-    // pastikan semua foto sudah sampai di booth sebelum Preview/render
-    const results = await Promise.all(Array.from(uploadPromisesRef.current.values()))
-    if (results.some((ok) => !ok)) {
-      setContinuing(false)
-      return
-    }
+    // langsung ke Preview: upload yang tersisa berjalan di belakang, booth-api menunggu semua
+    // foto/klip masuk sebelum merender, dan tombol Print menunggu antrean selesai
     try {
       // server pindah ke tahap Preview dengan timer preview sendiri
       await fetch(`${BOOTH_API}/api/sessions/${sessionId}/advance`, {
@@ -362,8 +338,20 @@ function ActionContent() {
             playsInline
             muted
             className="w-full h-full object-cover"
+            style={flip ? { transform: 'scaleX(-1)' } : undefined}
           />
           <canvas ref={canvasRef} className="hidden" />
+
+          {/* flip horizontal kamera; label = mode yang sedang aktif */}
+          <button
+            onClick={() => setMirrorMode(flip ? 'mirror' : 'non_mirror')}
+            disabled={isCapturing}
+            className="mirror-toggle"
+            aria-pressed={flip}
+            aria-label={`Mode kamera: ${flip ? 'Non-mirror' : 'Mirror'}. Ketuk untuk membalik`}
+          >
+            ⇋ {flip ? 'Non-mirror' : 'Mirror'}
+          </button>
 
           {isCapturing && countdown > 0 && (
             <div className="countdown-overlay">

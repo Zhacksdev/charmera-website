@@ -7,6 +7,7 @@ import { useKioskStore } from '../../stores/kioskStore'
 import { useStageTimer } from '../../hooks'
 import { FrameComposite } from '../../components/FrameComposite'
 import { PHOTO_FILTER_OPTIONS, filterCss, type PhotoFilter } from '../../lib/photo-filters'
+import { useUploadStates, waitForUploads } from '../../lib/upload-queue'
 
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
@@ -23,6 +24,9 @@ function PreviewContent() {
   const [loading, setLoading] = useState(false)
   const [config, setConfig] = useState<any>(null)
   const [filter, setFilter] = useState<PhotoFilter>('none')
+  const [uploadError, setUploadError] = useState('')
+  const uploads = useUploadStates(sessionId)
+  const uploadsPending = Object.values(uploads).some((state) => state === 'uploading')
   // finalize menunggu filter terakhir tersimpan agar render memakai filter yang benar
   const filterSaveRef = useRef<Promise<unknown>>(Promise.resolve())
 
@@ -67,6 +71,13 @@ function PreviewContent() {
 
     try {
       await filterSaveRef.current
+      // foto/klip dari halaman Action mungkin masih terkirim di belakang
+      if (!(await waitForUploads(sessionId))) {
+        setUploadError('Sebagian foto gagal terkirim ke booth. Periksa Wi-Fi tablet, lalu panggil petugas.')
+        finalizingRef.current = false
+        setLoading(false)
+        return
+      }
       const res = await fetch(`${BOOTH_API}/api/sessions/${sessionId}/finalize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -131,9 +142,11 @@ function PreviewContent() {
           disabled={loading}
           className="btn-primary min-h-20 min-w-80 px-10 text-2xl shadow-xl"
         >
-          {loading ? 'Menyiapkan hasil...' : showPrintButton ? 'Print sekarang' : 'Lanjut'}
+          {loading ? (uploadsPending ? 'Mengirim foto...' : 'Menyiapkan hasil...') : showPrintButton ? 'Print sekarang' : 'Lanjut'}
         </button>
       </div>
+      {uploadsPending && !loading && <div className="text-center text-sm font-bold text-cream/80" role="status">Mengirim foto ke booth...</div>}
+      {uploadError && <div role="alert" className="mx-auto mt-2 max-w-xl rounded-lg bg-cream px-4 py-3 text-center font-bold text-cherry">{uploadError}</div>}
     </main>
   )
 }

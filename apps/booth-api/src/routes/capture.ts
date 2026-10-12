@@ -3,6 +3,7 @@ import multer from 'multer'
 import { v4 as uuidv4 } from 'uuid'
 import { db } from '../db/index.js'
 import { logger } from '../services/logger.js'
+import { invalidateRenders } from '../services/session-flow.js'
 import { join } from 'path'
 import { writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
@@ -80,23 +81,31 @@ router.post('/:sessionId/photos', upload.fields([{ name: 'photo', maxCount: 1 },
       const clipFile = files.clip[0]
       await writeFile(clipPath, clipFile.buffer)
       
+      // mode Non-mirror: foto sudah dibalik di kiosk, klip dibalik saat render Live
+      const flipped = req.body.flip === '1' ? 1 : 0
+
       const existingClip = db.prepare(`
         SELECT id FROM clips WHERE session_id = ? AND slot_index = ?
       `).get(sessionId, slotIndex)
-      
+
       if (existingClip) {
         db.prepare(`
-          UPDATE clips SET path = ? WHERE session_id = ? AND slot_index = ?
-        `).run(clipPath, sessionId, slotIndex)
+          UPDATE clips SET path = ?, flipped = ? WHERE session_id = ? AND slot_index = ?
+        `).run(clipPath, flipped, sessionId, slotIndex)
       } else {
         db.prepare(`
-          INSERT INTO clips (id, session_id, slot_index, path, duration_ms)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(clipId, sessionId, slotIndex, clipPath, 5000)
+          INSERT INTO clips (id, session_id, slot_index, path, duration_ms, flipped)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(clipId, sessionId, slotIndex, clipPath, 5000, flipped)
       }
     }
     
     logger.info({ session_id: sessionId, slot_index: slotIndex }, 'Photo saved')
+
+    // foto tiba setelah render Preview dimulai (upload lambat / retake): render ulang dengan foto terbaru
+    if (invalidateRenders(sessionId)) {
+      logger.info({ session_id: sessionId, slot_index: slotIndex }, 'Renders re-queued for new photo')
+    }
     
     res.json({ 
       status: 'saved', 

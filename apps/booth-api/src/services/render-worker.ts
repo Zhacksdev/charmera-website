@@ -8,6 +8,7 @@ import { existsSync } from 'fs'
 import { completeSessionIfDone } from './session-flow.js'
 import { getConfig } from './config.js'
 import { queueOutput } from './sync-worker.js'
+import { shotNumbers } from './slot-photo.js'
 import type { Layout } from '@chamera/shared'
 
 export interface RenderJob {
@@ -32,14 +33,38 @@ export async function processRenderJobs() {
   }
 }
 
+// Kiosk pindah ke Preview tanpa menunggu upload; render menunggu foto/klip lengkap selama batas ini,
+// setelahnya tetap dirender dengan yang ada agar sesi tidak macet bila satu upload gagal
+const MEDIA_WAIT_MS = 45000
+
+/** Semua jepretan sesi sudah sampai di booth (foto; plus klip untuk Live)? */
+function mediaReady(job: any): boolean {
+  const session = db.prepare('SELECT frame_id FROM sessions WHERE id = ?').get(job.session_id) as { frame_id: string } | undefined
+  const framesRow = db.prepare(`SELECT value FROM config_cache WHERE key = 'frames'`).get() as { value: string } | undefined
+  const frame = framesRow && session ? JSON.parse(framesRow.value).find((f: any) => f.id === session.frame_id) : null
+  if (!frame?.layout?.slots) return true
+
+  const expected = shotNumbers(frame.layout.slots).length
+  const photos = (db.prepare('SELECT COUNT(*) AS n FROM photos WHERE session_id = ?').get(job.session_id) as { n: number }).n
+  const clips = String(job.type).startsWith('live')
+    ? (db.prepare('SELECT COUNT(*) AS n FROM clips WHERE session_id = ?').get(job.session_id) as { n: number }).n
+    : expected
+  if (photos >= expected && clips >= expected) return true
+
+  return Date.now() - new Date(job.created_at).getTime() > MEDIA_WAIT_MS
+}
+
 async function processNextRenderJob() {
-  const pendingJobs = db.prepare(`
-    SELECT * FROM render_jobs 
-    WHERE status = 'pending' 
-    ORDER BY created_at ASC 
-    LIMIT 1
+  // job tertua yang medianya sudah lengkap (job sesi lain tidak ikut tertahan)
+  const candidates = db.prepare(`
+    SELECT * FROM render_jobs
+    WHERE status = 'pending'
+    ORDER BY created_at ASC
+    LIMIT 20
   `).all() as any[]
-  
+  const ready = candidates.find((job) => mediaReady(job))
+  const pendingJobs = ready ? [ready] : []
+
   for (const job of pendingJobs) {
     const sessionStatus = (db.prepare('SELECT status FROM sessions WHERE id = ?').get(job.session_id) as { status: string } | undefined)?.status
     if (!sessionStatus || sessionStatus === 'abandoned') {
@@ -188,7 +213,8 @@ async function processRenderJob(job: any): Promise<string> {
         clips: clips.map(c => ({
           slot_index: c.slot_index,
           path: c.path,
-          duration_ms: c.duration_ms
+          duration_ms: c.duration_ms,
+          flipped: c.flipped === 1
         })),
         framePath: frameKeyedPath,
         layout,

@@ -9,12 +9,16 @@
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File deploy\windows\start-booth.ps1
   powershell -ExecutionPolicy Bypass -File deploy\windows\start-booth.ps1 -BoothHost 192.168.1.50
+  powershell -ExecutionPolicy Bypass -File deploy\windows\start-booth.ps1 -Dev   # kiosk mode development
 #>
 param(
   # IP LAN laptop. Kosong = deteksi otomatis dari adapter yang punya gateway.
   [string]$BoothHost = '',
   # Lokasi caddy.exe. Kosong = deploy\windows\caddy.exe, lalu PATH.
-  [string]$CaddyPath = ''
+  [string]$CaddyPath = '',
+  # Kiosk mode development (hot reload, untuk ngoding). Default: build produksi, halaman berpindah
+  # tanpa jeda compile dan jauh lebih ringan di tablet.
+  [switch]$Dev
 )
 
 $ErrorActionPreference = 'Stop'
@@ -69,6 +73,13 @@ if (-not $hasPin -and -not $env:OPERATOR_PIN -and -not $env:OPERATOR_PIN_HASH) {
 $caDir = Join-Path $env:APPDATA 'Caddy\pki\authorities\local'
 
 # 5. Jalankan layanan, masing-masing di jendela sendiri (tutup jendela = hentikan layanan)
+# Kiosk: build produksi lalu start (±1 menit saat pertama), atau dev server bila -Dev
+if ($Dev) {
+  $kioskCommand = 'pnpm --filter @chamera/kiosk exec next dev -H 127.0.0.1 -p 3000'
+} else {
+  $kioskCommand = 'Write-Host ''Build kiosk (produksi)...''; pnpm --filter @chamera/kiosk... run build; if ($LASTEXITCODE -eq 0) { pnpm --filter @chamera/kiosk exec next start -H 127.0.0.1 -p 3000 } else { Write-Host ''Build kiosk gagal, jalankan ulang skrip dengan -Dev'' -ForegroundColor Red }'
+}
+
 Write-Step 'Menjalankan Booth API, Kiosk, dan Caddy...'
 Start-Process powershell -WorkingDirectory $Root -ArgumentList @(
   '-NoExit', '-Command',
@@ -76,7 +87,7 @@ Start-Process powershell -WorkingDirectory $Root -ArgumentList @(
 )
 Start-Process powershell -WorkingDirectory $Root -ArgumentList @(
   '-NoExit', '-Command',
-  "`$Host.UI.RawUI.WindowTitle = 'Chamera Kiosk'; `$env:BOOTH_HOST = '$BoothHost'; pnpm --filter @chamera/kiosk exec next dev -H 127.0.0.1 -p 3000"
+  "`$Host.UI.RawUI.WindowTitle = 'Chamera Kiosk'; `$env:BOOTH_HOST = '$BoothHost'; $kioskCommand"
 )
 Start-Process powershell -WorkingDirectory $Root -ArgumentList @(
   '-NoExit', '-Command',

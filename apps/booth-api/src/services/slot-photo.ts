@@ -41,7 +41,7 @@ export async function photoForSlot(
     .rotate()
     .resize(right - left, bottom - top, { fit: 'cover', position: 'centre' })
     .toBuffer()
-  const input = await applySharpFilter(sharp(resized), filter, right - left).toBuffer()
+  const input = await (await applySharpFilter(resized, filter, right - left)).toBuffer()
 
   return { input, left, top }
 }

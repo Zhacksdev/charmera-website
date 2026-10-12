@@ -186,6 +186,26 @@ button:disabled {
   box-shadow: 0 4px 12px rgba(38, 33, 31, 0.25);
 }
 
+.mirror-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  min-height: 0;
+  border-radius: 999px;
+  background: rgba(38, 33, 31, 0.75);
+  padding: 8px 16px;
+  color: var(--cream);
+  font-size: 1rem;
+  font-weight: 800;
+  box-shadow: 0 4px 12px rgba(38, 33, 31, 0.3);
+}
+
+.mirror-toggle[aria-pressed='true'] {
+  background: var(--butter);
+  color: var(--char);
+}
+
 .filter-chip {
   display: flex;
   min-height: 0;

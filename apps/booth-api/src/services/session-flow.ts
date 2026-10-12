@@ -63,17 +63,32 @@ export function setSessionFilter(sessionId: string, filter: string): { status: s
     }
     if (session.filter === filter) return { status: session.status, filter }
 
-    db.prepare('UPDATE sessions SET filter = ?, render_rev = render_rev + 1 WHERE id = ?').run(filter, sessionId)
-    db.prepare('DELETE FROM outputs WHERE session_id = ?').run(sessionId)
-    db.prepare(`
-      UPDATE render_jobs SET status = 'pending', attempts = 0, error_message = NULL, finished_at = NULL
-      WHERE session_id = ?
-    `).run(sessionId)
+    db.prepare('UPDATE sessions SET filter = ? WHERE id = ?').run(filter, sessionId)
+    invalidateRenders(sessionId)
     return { status: session.status, filter }
   })
   const result = run()
   logger.info({ session_id: sessionId, filter: result.filter }, 'Session filter set')
   return result
+}
+
+/**
+ * Buang hasil render sesi yang belum difinalisasi dan antre ulang (filter diganti, atau foto retake
+ * tiba setelah render dimulai). Render yang sedang berjalan dibuang render worker lewat render_rev.
+ */
+export function invalidateRenders(sessionId: string): boolean {
+  const session = db.prepare('SELECT status FROM sessions WHERE id = ?').get(sessionId) as { status: string } | undefined
+  if (!session || !['frame_selected', 'capturing', 'previewing'].includes(session.status)) return false
+  const jobs = db.prepare('SELECT COUNT(*) AS n FROM render_jobs WHERE session_id = ?').get(sessionId) as { n: number }
+  if (jobs.n === 0) return false
+
+  db.prepare('UPDATE sessions SET render_rev = render_rev + 1 WHERE id = ?').run(sessionId)
+  db.prepare('DELETE FROM outputs WHERE session_id = ?').run(sessionId)
+  db.prepare(`
+    UPDATE render_jobs SET status = 'pending', attempts = 0, error_message = NULL, finished_at = NULL
+    WHERE session_id = ?
+  `).run(sessionId)
+  return true
 }
 
 /** Buat render job sesi bila belum ada (idempoten). */

@@ -16,7 +16,7 @@ const BLEED = 4
 
 export interface RenderLiveOptions {
   sessionId: string
-  clips: Array<{ slot_index: number; path: string; duration_ms: number }>
+  clips: Array<{ slot_index: number; path: string; duration_ms: number; flipped?: boolean }>
   framePath: string
   layout: {
     canvas: { w: number; h: number }
@@ -85,7 +85,7 @@ export async function renderLivePhoto(options: RenderLiveOptions): Promise<{ h26
           '-i', clip.path,
           '-an',
           '-r', '30',
-          '-vf', "scale='min(640,iw)':-2",
+          '-vf', `${clip.flipped ? 'hflip,' : ''}scale='min(640,iw)':-2`,
           '-c:v', 'libx264',
           '-preset', 'ultrafast',
           '-crf', '18',
@@ -134,7 +134,7 @@ export async function renderLivePhoto(options: RenderLiveOptions): Promise<{ h26
       filters.push(`[${i + 1}:v]split=${targets.length}${labels.map((l) => `[${l}src]`).join('')}`)
       targets.forEach((t, k) => {
         // filter warna/blur pilihan tamu hanya pada klip, frame di atasnya tetap warna asli
-        const look = ffmpegFilter(filter, t.w)
+        const look = ffmpegFilter(filter, t.w, labels[k])
         filters.push(`[${labels[k]}src]scale=${t.w}:${t.h}:force_original_aspect_ratio=increase,crop=${t.w}:${t.h},setsar=1${look ? `,${look}` : ''}[${labels[k]}]`)
         const out = `layer${layerCount++}`
         filters.push(`[${lastLayer}][${labels[k]}]overlay=${t.left}:${t.top}:shortest=1[${out}]`)
