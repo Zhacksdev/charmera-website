@@ -164,6 +164,28 @@ button:disabled {
   pointer-events: none;
 }
 
+.frame-choice .frame-composite {
+  transition: box-shadow 150ms ease, transform 150ms ease;
+}
+
+.frame-choice-picked .frame-composite {
+  box-shadow: 0 0 0 6px var(--butter), 0 12px 30px rgba(38, 33, 31, 0.3);
+  transform: scale(1.02);
+}
+
+.frame-picked-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  border-radius: 999px;
+  background: var(--butter);
+  padding: 6px 14px;
+  font-weight: 800;
+  color: var(--char);
+  box-shadow: 0 4px 12px rgba(38, 33, 31, 0.25);
+}
+
 .frame-composite-current {
   outline: 4px solid var(--butter);
   outline-offset: -4px;

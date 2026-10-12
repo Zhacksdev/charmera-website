@@ -9,8 +9,8 @@ import { FrameComposite } from '../../components/FrameComposite'
 import { shotNumbers } from '../../lib/frame-layout'
 
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
-// jeda sebelum foto pertama (tamu bersiap) dan antar-foto (ganti gaya)
-const FIRST_SHOT_DELAY_MS = 2500
+// jeda sebelum foto pertama (countdown langsung mulai setelah kamera siap) dan antar-foto (ganti gaya)
+const FIRST_SHOT_DELAY_MS = 800
 const NEXT_SHOT_DELAY_MS = 1500
 const UPLOAD_ATTEMPTS = 3
 
@@ -209,13 +209,26 @@ function ActionContent() {
     }
   }, [isReady, sessionId, totalSlots, startRecording, getClipBlob, capturePhoto, setPhoto, videoRef, timerSnapshot, outputMode, uploadShot])
 
+  // nilai yang berubah tiap detik (polling) dibaca lewat ref — bila jadi dependency effect di bawah,
+  // jeda sebelum jepretan ter-reset tiap detik dan foto tidak pernah diambil
+  const handleCaptureRef = useRef(handleCapture)
+  handleCaptureRef.current = handleCapture
+  const remainingRef = useRef(remainingSec)
+  remainingRef.current = remainingSec
+  const countdownSecRef = useRef(5)
+  countdownSecRef.current = timerSnapshot?.countdown || 5
+
   // urutan otomatis: foto 1 → 2 → ... tanpa tombol, dengan jeda singkat untuk ganti gaya
   useEffect(() => {
     if (!isReady || !sessionId || isCapturing || allSlotsFilled || totalSlots === 0) return
-    if (remainingSec > 0 && remainingSec < (timerSnapshot?.countdown || 5) + 2) return
-    const timer = setTimeout(() => void handleCapture(nextShot), nextShot === 0 ? FIRST_SHOT_DELAY_MS : NEXT_SHOT_DELAY_MS)
+    const timer = setTimeout(() => {
+      const remaining = remainingRef.current
+      // sisa waktu tidak cukup untuk satu countdown lagi — server akan memindahkan ke Preview
+      if (remaining > 0 && remaining < countdownSecRef.current + 2) return
+      void handleCaptureRef.current(nextShot)
+    }, nextShot === 0 ? FIRST_SHOT_DELAY_MS : NEXT_SHOT_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [isReady, sessionId, isCapturing, allSlotsFilled, totalSlots, nextShot, handleCapture, remainingSec, timerSnapshot])
+  }, [isReady, sessionId, isCapturing, allSlotsFilled, totalSlots, nextShot])
 
   const handleRetake = useCallback(async (slotIndex: number) => {
     if (isCapturing) return
@@ -290,7 +303,7 @@ function ActionContent() {
       ? `Foto ${Math.min(nextShot + 1, totalSlots)} dari ${totalSlots}`
       : allSlotsFilled
         ? (continuing && uploadsPending ? 'Mengirim foto...' : 'Semua foto sudah diambil!')
-        : nextShot === 0 ? 'Bersiap, foto dimulai otomatis...' : `Ganti gaya! Foto ${nextShot + 1} sebentar lagi`
+        : nextShot === 0 ? 'Bersiap, countdown dimulai...' : `Ganti gaya! Foto ${nextShot + 1} sebentar lagi`
 
   return (
     <main className="relative flex min-h-screen flex-col overflow-y-auto p-5 md:p-8">
