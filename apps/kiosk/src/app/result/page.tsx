@@ -106,9 +106,16 @@ function ResultContent() {
   }, [remainingSec, router, sessionId])
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 overflow-y-auto px-6 py-8 text-center">
-      <img src="/logo.png" alt="Chamera, Wear your memories" className="w-[min(38vw,220px)] object-contain" />
-      <div className="text-2xl font-extrabold text-cream md:text-4xl">Soft file fotomu sudah siap</div>
+    <main className="relative flex min-h-screen flex-col overflow-y-auto p-5 md:p-8">
+      {/* header sama dengan halaman Frame/Action/Preview: timer di kiri atas */}
+      <header className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] items-center gap-2 md:gap-3">
+        <div className="timer-pill justify-self-start">{formatTimer(remainingSec)}</div>
+        <h1 className="text-center text-xl font-extrabold text-cream md:text-5xl">Soft file fotomu sudah siap</h1>
+        <div />
+      </header>
+
+      <div className="flex flex-1 flex-col items-center justify-center gap-6 py-5 text-center">
+      <img src="/logo.png" alt="Chamera, Wear your memories" className="w-[min(30vw,180px)] object-contain" />
 
       <div className="rounded-[28px] bg-cream p-6 shadow-2xl">
           <div className="flex h-[min(58vw,360px)] w-[min(58vw,360px)] items-center justify-center bg-white">
@@ -159,7 +166,7 @@ function ResultContent() {
       )}
 
       {printError && <div className="text-sm text-butter">{printError}</div>}
-      <div className="timer-pill">{formatTimer(remainingSec)}</div>
+      </div>
     </main>
   )
 }

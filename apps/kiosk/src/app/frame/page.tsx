@@ -172,11 +172,11 @@ function formatTimer(seconds: number) {
 }
 
 function FrameArtwork({ frame }: { frame: Frame }) {
-  // frame asli yang diunggah admin, slot diisi foto contoh
+  // frame asli yang diunggah admin, slot kosong berlabel — sama dengan tampilan di halaman Action
   return (
     <FrameComposite
       frame={frame}
-      renderSlot={(shotIndex) => <img src={`/examples/example${shotIndex % 3 + 1}.jpg`} alt="" />}
+      renderSlot={(shotIndex) => <span className="flex h-full w-full items-center justify-center">Foto {shotIndex + 1}</span>}
     />
   )
 }
