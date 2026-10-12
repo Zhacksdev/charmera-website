@@ -1,5 +1,6 @@
 import sharp from 'sharp'
 import type { Slot } from '@chamera/shared'
+import { applySharpFilter, type PhotoFilter } from './photo-filter.js'
 
 // Lebihkan foto beberapa piksel ke bawah frame agar tepi anti-alias slot tidak menampakkan celah putih
 const BLEED = 4
@@ -27,17 +28,20 @@ export function slotsForShot<T extends NumberedSlot>(slots: T[], shotIndex: numb
 export async function photoForSlot(
   photo: Buffer | string,
   slot: Pick<Slot, 'x' | 'y' | 'w' | 'h'>,
-  canvas: { w: number; h: number }
+  canvas: { w: number; h: number },
+  filter?: PhotoFilter
 ): Promise<sharp.OverlayOptions> {
   const left = Math.max(0, Math.round(slot.x) - BLEED)
   const top = Math.max(0, Math.round(slot.y) - BLEED)
   const right = Math.min(canvas.w, Math.round(slot.x + slot.w) + BLEED)
   const bottom = Math.min(canvas.h, Math.round(slot.y + slot.h) + BLEED)
 
-  const input = await sharp(photo)
+  // resize dulu ke buffer: operasi warna/blur sharp berjalan sebelum resize bila dalam satu pipeline
+  const resized = await sharp(photo)
     .rotate()
     .resize(right - left, bottom - top, { fit: 'cover', position: 'centre' })
     .toBuffer()
+  const input = await applySharpFilter(sharp(resized), filter, right - left).toBuffer()
 
   return { input, left, top }
 }

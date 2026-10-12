@@ -5,7 +5,8 @@ import { db } from '../db/index.js'
 import { logger } from '../services/logger.js'
 import { createSessionInputSchema } from '@chamera/shared'
 import { getConfig } from '../services/config.js'
-import { getRemainingTime, checkSessionExpiry, selectFrame, startPreview, finalizeSession, stageSeconds } from '../services/session-flow.js'
+import { getRemainingTime, checkSessionExpiry, selectFrame, startPreview, finalizeSession, stageSeconds, setSessionFilter } from '../services/session-flow.js'
+import { isPhotoFilter, PHOTO_FILTERS } from '../services/photo-filter.js'
 
 const router = Router()
 
@@ -151,6 +152,21 @@ router.post('/:id/reset', (req, res) => {
   } catch (err) {
     logger.error({ err }, 'Failed to reset session')
     res.status(500).json({ error: 'Failed to reset session' })
+  }
+})
+
+// Filter foto pilihan tamu di Preview; render diulang dengan filter baru
+router.post('/:id/filter', (req, res) => {
+  try {
+    const filter = req.body?.filter
+    if (!isPhotoFilter(filter)) {
+      return res.status(400).json({ error: `filter harus salah satu dari: ${PHOTO_FILTERS.join(', ')}` })
+    }
+    res.json(setSessionFilter(req.params.id, filter))
+  } catch (err: any) {
+    if (err?.message === 'Session not found') return res.status(404).json({ error: 'Session not found' })
+    logger.error({ err }, 'Failed to set filter')
+    res.status(500).json({ error: 'Failed to set filter' })
   }
 })
 

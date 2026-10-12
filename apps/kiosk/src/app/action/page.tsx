@@ -30,7 +30,8 @@ function ActionContent() {
   const { videoRef, isReady, error: cameraError, startCamera, stopCamera, capturePhoto } = useCamera({
     width: 1920,
     height: 1080,
-    mirror: true
+    // non-mirror di mana pun: yang dilihat tamu = hasil foto/GIF/Live
+    mirror: false
   })
 
   const { startRecording, getClipBlob } = useClipRecorder()
@@ -361,7 +362,6 @@ function ActionContent() {
             playsInline
             muted
             className="w-full h-full object-cover"
-            style={{ transform: 'scaleX(-1)' }}
           />
           <canvas ref={canvasRef} className="hidden" />
 

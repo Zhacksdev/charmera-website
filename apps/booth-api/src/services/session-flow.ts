@@ -50,6 +50,32 @@ export function startPreview(sessionId: string): void {
   ensureRenderJobs(sessionId)
 }
 
+/**
+ * Ganti filter foto (hanya sebelum finalize). Render yang sudah jadi/berjalan dibuang dan diantre ulang;
+ * render worker membuang hasil job yang dimulai sebelum render_rev naik.
+ */
+export function setSessionFilter(sessionId: string, filter: string): { status: string; filter: string } {
+  const run = db.transaction(() => {
+    const session = db.prepare('SELECT status, filter FROM sessions WHERE id = ?').get(sessionId) as { status: string; filter: string } | undefined
+    if (!session) throw new Error('Session not found')
+    if (!['frame_selected', 'capturing', 'previewing'].includes(session.status)) {
+      return { status: session.status, filter: session.filter }
+    }
+    if (session.filter === filter) return { status: session.status, filter }
+
+    db.prepare('UPDATE sessions SET filter = ?, render_rev = render_rev + 1 WHERE id = ?').run(filter, sessionId)
+    db.prepare('DELETE FROM outputs WHERE session_id = ?').run(sessionId)
+    db.prepare(`
+      UPDATE render_jobs SET status = 'pending', attempts = 0, error_message = NULL, finished_at = NULL
+      WHERE session_id = ?
+    `).run(sessionId)
+    return { status: session.status, filter }
+  })
+  const result = run()
+  logger.info({ session_id: sessionId, filter: result.filter }, 'Session filter set')
+  return result
+}
+
 /** Buat render job sesi bila belum ada (idempoten). */
 function ensureRenderJobs(sessionId: string): string[] {
   const existing = db.prepare('SELECT type FROM render_jobs WHERE session_id = ?').all(sessionId) as Array<{ type: string }>

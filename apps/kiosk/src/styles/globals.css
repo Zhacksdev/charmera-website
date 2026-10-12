@@ -186,6 +186,34 @@ button:disabled {
   box-shadow: 0 4px 12px rgba(38, 33, 31, 0.25);
 }
 
+.filter-chip {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border-radius: 14px;
+  border: 3px solid transparent;
+  background: rgba(255, 244, 227, 0.15);
+  padding: 6px;
+  color: var(--cream);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.filter-chip img {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.filter-chip-active {
+  border-color: var(--butter);
+  background: var(--cream);
+  color: var(--cherry);
+}
+
 .retake-slot {
   position: relative;
   display: block;

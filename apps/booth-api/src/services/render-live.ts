@@ -5,6 +5,7 @@ import { existsSync } from 'fs'
 import sharp from 'sharp'
 import { slotsForShot } from './slot-photo.js'
 import { textOverlay, type TextArea } from './text-overlay.js'
+import { ffmpegFilter, type PhotoFilter } from './photo-filter.js'
 
 const OUTPUTS_DIR = process.env.DATA_DIR
   ? join(process.env.DATA_DIR, 'outputs')
@@ -28,6 +29,7 @@ export interface RenderLiveOptions {
   codec?: 'h265' | 'h264'
   previewH264?: boolean
   maxWidth?: number
+  filter?: PhotoFilter
 }
 
 const even = (value: number) => Math.max(2, Math.round(value / 2) * 2)
@@ -53,7 +55,8 @@ export async function renderLivePhoto(options: RenderLiveOptions): Promise<{ h26
     durationSec = 5,
     codec = 'h265',
     previewH264 = true,
-    maxWidth = 1080
+    maxWidth = 1080,
+    filter
   } = options
 
   await ensureOutputsDir()
@@ -130,7 +133,9 @@ export async function renderLivePhoto(options: RenderLiveOptions): Promise<{ h26
       const labels = targets.map((_, k) => `clip${i}_${k}`)
       filters.push(`[${i + 1}:v]split=${targets.length}${labels.map((l) => `[${l}src]`).join('')}`)
       targets.forEach((t, k) => {
-        filters.push(`[${labels[k]}src]scale=${t.w}:${t.h}:force_original_aspect_ratio=increase,crop=${t.w}:${t.h},setsar=1[${labels[k]}]`)
+        // filter warna/blur pilihan tamu hanya pada klip, frame di atasnya tetap warna asli
+        const look = ffmpegFilter(filter, t.w)
+        filters.push(`[${labels[k]}src]scale=${t.w}:${t.h}:force_original_aspect_ratio=increase,crop=${t.w}:${t.h},setsar=1${look ? `,${look}` : ''}[${labels[k]}]`)
         const out = `layer${layerCount++}`
         filters.push(`[${lastLayer}][${labels[k]}]overlay=${t.left}:${t.top}:shortest=1[${out}]`)
         lastLayer = out

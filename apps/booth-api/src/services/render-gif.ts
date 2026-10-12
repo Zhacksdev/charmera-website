@@ -3,6 +3,7 @@ import { join } from 'path'
 import { writeFile, mkdir, unlink } from 'fs/promises'
 import { existsSync } from 'fs'
 import sharp from 'sharp'
+import { applySharpFilter, type PhotoFilter } from './photo-filter.js'
 
 const OUTPUTS_DIR = process.env.DATA_DIR
   ? join(process.env.DATA_DIR, 'outputs')
@@ -15,6 +16,7 @@ export interface RenderGifOptions {
   frameDurationMs?: number
   /** Sisi terpanjang maksimal (px) */
   maxWidth?: number
+  filter?: PhotoFilter
 }
 
 export async function ensureOutputsDir() {
@@ -32,7 +34,8 @@ export async function renderGif(options: RenderGifOptions): Promise<string> {
     sessionId,
     photos,
     frameDurationMs = 800,
-    maxWidth = 1080
+    maxWidth = 1080,
+    filter
   } = options
 
   await ensureOutputsDir()
@@ -48,11 +51,11 @@ export async function renderGif(options: RenderGifOptions): Promise<string> {
 
   const framePaths: string[] = []
   for (let i = 0; i < sortedPhotos.length; i++) {
-    const frame = await sharp(sortedPhotos[i].path)
+    const resized = await sharp(sortedPhotos[i].path)
       .rotate()
       .resize(width, height, { fit: 'cover', position: 'centre' })
-      .png()
       .toBuffer()
+    const frame = await applySharpFilter(sharp(resized), filter, width).png().toBuffer()
     const framePath = join(OUTPUTS_DIR, `${sessionId}_frame_${i}.png`)
     await writeFile(framePath, frame)
     framePaths.push(framePath)

@@ -5,6 +5,7 @@ import { existsSync } from 'fs'
 import type { Layout, Slot } from '@chamera/shared'
 import { photoForSlot, slotsForShot } from './slot-photo.js'
 import { textOverlay, type TextStyle } from './text-overlay.js'
+import type { PhotoFilter } from './photo-filter.js'
 
 const OUTPUTS_DIR = process.env.DATA_DIR 
   ? join(process.env.DATA_DIR, 'outputs') 
@@ -17,6 +18,7 @@ export interface RenderStripOptions {
   layout: Layout
   customText?: string
   textStyle?: TextStyle
+  filter?: PhotoFilter
 }
 
 export async function ensureOutputsDir() {
@@ -26,7 +28,7 @@ export async function ensureOutputsDir() {
 }
 
 export async function renderStrip(options: RenderStripOptions): Promise<string> {
-  const { sessionId, photos, frameKeyedPath, layout, customText, textStyle } = options
+  const { sessionId, photos, frameKeyedPath, layout, customText, textStyle, filter } = options
   
   await ensureOutputsDir()
   
@@ -47,7 +49,7 @@ export async function renderStrip(options: RenderStripOptions): Promise<string> 
 
   for (const photo of sortedPhotos) {
     for (const slot of slotsForShot(slots, photo.slot_index)) {
-      composites.push(await photoForSlot(photo.path, slot, canvas))
+      composites.push(await photoForSlot(photo.path, slot, canvas, filter))
     }
   }
 

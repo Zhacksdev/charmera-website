@@ -14,7 +14,7 @@ export function useCamera(options: UseCameraOptions = {}) {
     width = 1920,
     height = 1080,
     facingMode = 'user',
-    mirror = true
+    mirror = false
   } = options
 
   const videoRef = useRef<HTMLVideoElement | null>(null)

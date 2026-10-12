@@ -48,13 +48,22 @@ async function processNextRenderJob() {
       continue
     }
 
+    const renderRev = () => (db.prepare('SELECT render_rev FROM sessions WHERE id = ?').get(job.session_id) as { render_rev: number } | undefined)?.render_rev
+    const startRev = renderRev()
+
     try {
       db.prepare(`
         UPDATE render_jobs SET status = 'rendering' WHERE id = ?
       `).run(job.id)
-      
+
       const outputPath = await processRenderJob(job)
-      
+
+      // filter diganti saat job ini berjalan: job sudah dikembalikan ke pending, hasil lama dibuang
+      if (renderRev() !== startRev) {
+        logger.info({ job_id: job.id, type: job.type }, 'Render discarded: filter changed')
+        continue
+      }
+
       db.prepare(`
         UPDATE render_jobs 
         SET status = 'done', finished_at = ?
@@ -138,7 +147,8 @@ async function processRenderJob(job: any): Promise<string> {
         photos: photos.map(p => ({ slot_index: p.slot_index, path: p.path })),
         frameKeyedPath,
         layout,
-        customText: session.custom_text
+        customText: session.custom_text,
+        filter: session.filter
       })
       
     case 'gif':
@@ -147,7 +157,8 @@ async function processRenderJob(job: any): Promise<string> {
         sessionId: job.session_id,
         photos: photos.map(p => ({ slot_index: p.slot_index, path: p.path })),
         frameDurationMs: gifConfig.frame_duration_ms,
-        maxWidth: gifConfig.max_width
+        maxWidth: gifConfig.max_width,
+        filter: session.filter
       })
       
     case 'live_h265':
@@ -184,7 +195,8 @@ async function processRenderJob(job: any): Promise<string> {
         customText: session.custom_text,
         durationSec: liveConfig.clip_sec || config?.timers?.countdown || 5,
         codec: liveConfig.codec,
-        previewH264: liveConfig.preview_h264
+        previewH264: liveConfig.preview_h264,
+        filter: session.filter
       })
       
       return job.type === 'live_h265' ? result.h265 : (result.h264 || result.h265)
