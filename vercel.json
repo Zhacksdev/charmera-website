@@ -6,7 +6,7 @@
       "framework": "express",
       "entrypoint": "src/server.ts",
       "installCommand": "cd ../.. && pnpm install --frozen-lockfile --prod=false",
-      "buildCommand": "cd ../.. && pnpm --filter @chamera/cloud-api... run build && rm -rf apps/cloud-api/deploy-out && pnpm --filter @chamera/cloud-api deploy --prod apps/cloud-api/deploy-out && rm -rf apps/cloud-api/node_modules && mv apps/cloud-api/deploy-out/node_modules apps/cloud-api/node_modules && rm -rf apps/cloud-api/deploy-out"
+      "buildCommand": "cd ../.. && pnpm --filter \"@chamera/cloud-api^...\" run build && rm -rf apps/cloud-api/dist"
     },
     "download": {
       "root": "apps/download",
@@ -27,15 +27,41 @@
     {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" }
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        }
       ]
     }
   ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": { "service": "cloud-api" } },
-    { "source": "/download", "destination": { "service": "download" } },
-    { "source": "/download/(.*)", "destination": { "service": "download" } },
-    { "source": "/(.*)", "destination": { "service": "admin" } }
+    {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "cloud-api"
+      }
+    },
+    {
+      "source": "/download",
+      "destination": {
+        "service": "download"
+      }
+    },
+    {
+      "source": "/download/(.*)",
+      "destination": {
+        "service": "download"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "admin"
+      }
+    }
   ]
 }
