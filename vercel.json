@@ -4,7 +4,7 @@
     "cloud-api": {
       "root": "apps/cloud-api",
       "framework": "express",
-      "entrypoint": "dist/server.js",
+      "entrypoint": "src/server.ts",
       "installCommand": "cd ../.. && pnpm install --frozen-lockfile --prod=false",
       "buildCommand": "cd ../.. && pnpm --filter @chamera/cloud-api... run build"
     },
