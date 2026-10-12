@@ -3,7 +3,8 @@ import { db } from '../db/index.js'
 import { logger } from './logger.js'
 import { renderStrip } from './render-strip.js'
 import { renderGif } from './render-gif.js'
-import { renderLivePhoto } from './render-live.js'
+import { renderLivePhoto, liveOutputPaths } from './render-live.js'
+import { existsSync } from 'fs'
 import { completeSessionIfDone } from './session-flow.js'
 import { getConfig } from './config.js'
 import { queueOutput } from './sync-worker.js'
@@ -40,6 +41,13 @@ async function processNextRenderJob() {
   `).all() as any[]
   
   for (const job of pendingJobs) {
+    const sessionStatus = (db.prepare('SELECT status FROM sessions WHERE id = ?').get(job.session_id) as { status: string } | undefined)?.status
+    if (!sessionStatus || sessionStatus === 'abandoned') {
+      // sesi direset/dibatalkan saat Preview — jangan habiskan CPU untuk render
+      db.prepare(`UPDATE render_jobs SET status = 'failed', error_message = 'Sesi dibatalkan' WHERE id = ?`).run(job.id)
+      continue
+    }
+
     try {
       db.prepare(`
         UPDATE render_jobs SET status = 'rendering' WHERE id = ?
@@ -60,8 +68,12 @@ async function processNextRenderJob() {
       
       logger.info({ job_id: job.id, type: job.type }, 'Render job completed')
 
-      // unggah ke cloud segera (strip dulu) — halaman download menampilkan file satu per satu
-      queueOutput(job.session_id, job.type, outputPath)
+      // unggah ke cloud segera (strip dulu) — halaman download menampilkan file satu per satu.
+      // Selama Preview sesi belum ada di cloud; finalizeSession mengantre output yang sudah jadi.
+      const status = (db.prepare('SELECT status FROM sessions WHERE id = ?').get(job.session_id) as { status: string } | undefined)?.status
+      if (status && ['processing', 'completed', 'failed'].includes(status)) {
+        queueOutput(job.session_id, job.type, outputPath)
+      }
       
     } catch (err: any) {
       logger.error({ err, job_id: job.id }, 'Render job failed')
@@ -140,6 +152,16 @@ async function processRenderJob(job: any): Promise<string> {
       
     case 'live_h265':
     case 'live_h264':
+      // satu render menghasilkan H.265 + H.264 sekaligus — job saudara cukup memakai file yang sudah ada
+      const sibling = job.type === 'live_h265' ? 'live_h264' : 'live_h265'
+      const siblingDone = db.prepare(`
+        SELECT 1 FROM render_jobs WHERE session_id = ? AND type = ? AND status = 'done'
+      `).get(job.session_id, sibling)
+      const existingPath = liveOutputPaths(job.session_id)[job.type === 'live_h265' ? 'h265' : 'h264']
+      if (siblingDone && existsSync(existingPath)) {
+        return existingPath
+      }
+
       const clips = db.prepare(`
         SELECT * FROM clips WHERE session_id = ? ORDER BY slot_index
       `).all(job.session_id) as any[]

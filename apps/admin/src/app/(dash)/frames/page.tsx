@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { adminFetch, adminSend, errorMessage } from '../../../lib/supabase'
+import { defaultPattern, detectPattern, renumberSlots, shotCount, type LayoutSlot, type SlotPattern } from '../../../lib/slot-numbering'
 
 interface Frame {
   id: string
@@ -11,6 +12,7 @@ interface Frame {
   is_active: boolean
   sort_order: number
   slot_count?: number
+  layout?: { slots?: LayoutSlot[]; [key: string]: unknown }
 }
 
 export default function FramesPage() {
@@ -68,13 +70,14 @@ export default function FramesPage() {
           orientation: analysis.orientation,
           canvas_w: analysis.canvas?.w,
           canvas_h: analysis.canvas?.h,
-          layout: analysis.layout,
+          // frame berisi beberapa strip sama panjang: foto 1 2 3 diulang tiap strip (1 2 3 · 1 2 3)
+          layout: { ...analysis.layout, slots: renumberSlots(analysis.layout.slots, defaultPattern(analysis.layout.slots)) },
           sort_order: frames.length,
           image_base64: analysis.keyed_preview
         })
       })
 
-      alert(`Frame tersimpan: ${analysis.slots.length} slot terdeteksi`)
+      alert(`Frame tersimpan: ${analysis.slots.length} slot terdeteksi, ${shotCount(renumberSlots(analysis.layout.slots, defaultPattern(analysis.layout.slots)))} foto per sesi`)
       fetchFrames()
     } catch (err) {
       console.error('Upload failed:', err)
@@ -82,6 +85,20 @@ export default function FramesPage() {
     } finally {
       setUploading(false)
       input.value = ''
+    }
+  }
+
+  const handleSlotPattern = async (frame: Frame, pattern: SlotPattern) => {
+    const slots = frame.layout?.slots
+    if (!slots?.length) return
+    try {
+      await adminSend(`/api/admin/frames/${frame.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ layout: { ...frame.layout, slots: renumberSlots(slots, pattern) } })
+      })
+      fetchFrames()
+    } catch (err) {
+      alert(`Gagal mengubah urutan foto: ${errorMessage(err, 'unknown')}`)
     }
   }
 
@@ -124,7 +141,7 @@ export default function FramesPage() {
               <div>
                 <h3 className="font-bold">{frame.name}</h3>
                 <p className="text-sm text-char opacity-75">
-                  {frame.orientation} · {frame.slot_count || '?'} slot
+                  {frame.orientation} · {frame.slot_count || '?'} slot · {frame.layout?.slots?.length ? shotCount(frame.layout.slots) : '?'} foto
                 </p>
               </div>
               <button
@@ -137,6 +154,30 @@ export default function FramesPage() {
               </button>
             </div>
             
+            {(frame.layout?.slots?.length ?? 0) > 1 && (
+              <div className="mb-3">
+                <p className="text-xs font-semibold text-char opacity-75 mb-1">Urutan foto di slot</p>
+                <div className="flex gap-2">
+                  {([
+                    { pattern: 'per_column', label: '1 2 3 · 1 2 3', hint: 'Foto sama di tiap strip' },
+                    { pattern: 'per_slot', label: '1 – ' + frame.layout!.slots!.length, hint: 'Foto berbeda tiap slot' },
+                  ] as const).map(({ pattern, label, hint }) => {
+                    const active = detectPattern(frame.layout!.slots!) === pattern
+                    return (
+                      <button
+                        key={pattern}
+                        onClick={() => !active && handleSlotPattern(frame, pattern)}
+                        title={hint}
+                        className={`flex-1 rounded px-2 py-1 text-xs ${active ? 'bg-cherry text-cream' : 'bg-line text-char'}`}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {frame.extra_price > 0 && (
               <p className="text-sm text-cherry font-semibold">
                 +Rp {frame.extra_price.toLocaleString('id-ID')}

@@ -125,11 +125,16 @@ router.post('/:id/reset', (req, res) => {
     if (!session) {
       return res.status(404).json({ error: 'Session not found' })
     }
-    
+
+    // setelah finalize QR sudah tampil ke tamu — hasilnya tidak boleh ikut terhapus
+    if (!['created', 'frame_selected', 'capturing', 'previewing'].includes(session.status)) {
+      return res.json({ status: session.status, reset: false })
+    }
+
     const now = new Date().toISOString()
-    
+
     db.prepare(`
-      UPDATE sessions 
+      UPDATE sessions
       SET status = 'abandoned', completed_at = ?, stage_expires_at = NULL
       WHERE id = ?
     `).run(now, id)

@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import '../styles/globals.css'
+import { Suspense } from 'react'
 import { KioskRuntime } from '../components/KioskRuntime'
+import { LongPressReset } from '../components/LongPressReset'
 
 export const metadata: Metadata = {
   title: 'Chamera - Photobooth',
@@ -25,6 +27,9 @@ export default function RootLayout({
     <html lang="id">
       <body className="kiosk-shell font-sans min-h-screen overflow-hidden">
         <KioskRuntime />
+        <Suspense fallback={null}>
+          <LongPressReset />
+        </Suspense>
         {children}
       </body>
     </html>

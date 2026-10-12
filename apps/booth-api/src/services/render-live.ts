@@ -32,6 +32,13 @@ export interface RenderLiveOptions {
 
 const even = (value: number) => Math.max(2, Math.round(value / 2) * 2)
 
+export function liveOutputPaths(sessionId: string): { h265: string; h264: string } {
+  return {
+    h265: join(OUTPUTS_DIR, `${sessionId}_live_h265.mp4`),
+    h264: join(OUTPUTS_DIR, `${sessionId}_live_h264.mp4`)
+  }
+}
+
 /**
  * Live photo = tampilan strip yang sama, tetapi tiap slot memutar klip slot itu (loop) di bawah
  * PNG frame + custom text. Kanvas mengikuti ukuran frame (sisi panjang maks maxWidth).
@@ -65,24 +72,25 @@ export async function renderLivePhoto(options: RenderLiveOptions): Promise<{ h26
   const tempFiles: string[] = []
 
   try {
-    // WebM dari MediaRecorder sering tanpa timestamp/durasi yang rapi — samakan dulu ke MP4 30fps
-    const normalizedClips: string[] = []
-    for (let i = 0; i < sortedClips.length; i++) {
+    // WebM dari MediaRecorder sering tanpa timestamp/durasi yang rapi — samakan dulu ke MP4 30fps.
+    // Paralel + diperkecil (slot di video hanya ±300 px) + ultrafast: file sementara, kualitas cukup
+    const normalizedClips = await Promise.all(sortedClips.map(async (clip, i) => {
       const outputPath = join(OUTPUTS_DIR, `${sessionId}_clip_${i}_normalized.mp4`)
       tempFiles.push(outputPath)
       await runFfmpeg([
           '-y',
-          '-i', sortedClips[i].path,
+          '-i', clip.path,
           '-an',
           '-r', '30',
+          '-vf', "scale='min(640,iw)':-2",
           '-c:v', 'libx264',
-          '-preset', 'fast',
-          '-crf', '20',
+          '-preset', 'ultrafast',
+          '-crf', '18',
           '-pix_fmt', 'yuv420p',
           outputPath
         ], 'Clip normalization')
-      normalizedClips.push(outputPath)
-    }
+      return outputPath
+    }))
 
     // layer atas: PNG frame + custom text, dirender di resolusi kanvas lalu diperkecil
     const overlays: sharp.OverlayOptions[] = [{ input: framePath, left: 0, top: 0 }]
@@ -129,46 +137,42 @@ export async function renderLivePhoto(options: RenderLiveOptions): Promise<{ h26
       })
     }
 
-    filters.push(`[${lastLayer}][${frameInputIdx}:v]overlay=0:0:shortest=1,format=yuv420p[output]`)
+    const { h265: h265Path, h264: livePreviewPath } = liveOutputPaths(sessionId)
+    const wantH264 = previewH264 || codec === 'h264'
 
-    const h265Path = join(OUTPUTS_DIR, `${sessionId}_live_h265.mp4`)
+    // satu kali komposit, dua keluaran (H.265 unduhan + H.264 720p preview) — tanpa decode ulang
+    if (wantH264) {
+      filters.push(`[${lastLayer}][${frameInputIdx}:v]overlay=0:0:shortest=1,format=yuv420p,split=2[output][preview_src]`)
+      filters.push(`[preview_src]scale=-2:720[preview]`)
+    } else {
+      filters.push(`[${lastLayer}][${frameInputIdx}:v]overlay=0:0:shortest=1,format=yuv420p[output]`)
+    }
+
+    // preset "veryfast": jauh lebih cepat dari "fast" dengan file sedikit lebih besar —
+    // tamu tidak perlu menunggu lama sampai Live muncul di halaman download
+    const h265Args = [
+      '-map', '[output]', '-t', String(duration), '-an',
+      '-c:v', 'libx265', '-preset', 'veryfast', '-crf', '28', '-tag:v', 'hvc1',
+      '-x265-params', 'log-level=error',
+      '-movflags', '+faststart', h265Path
+    ]
+    const h264Args = wantH264 ? [
+      '-map', '[preview]', '-t', String(duration), '-an',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart', livePreviewPath
+    ] : []
 
     await runFfmpeg([
         '-y',
         ...inputs,
         '-filter_complex', filters.join(';'),
-        '-map', '[output]',
-        '-t', String(duration),
-        '-an',
-        '-c:v', 'libx265',
-        '-preset', 'fast',
-        '-crf', '28',
-        '-tag:v', 'hvc1',
-        '-movflags', '+faststart',
-        h265Path
-      ], 'H.265 encoding')
-
-    let h264Path: string | undefined
-
-    if (previewH264 || codec === 'h264') {
-      h264Path = join(OUTPUTS_DIR, `${sessionId}_live_h264.mp4`)
-
-      await runFfmpeg([
-          '-y',
-          '-i', h265Path,
-          '-c:v', 'libx264',
-          '-preset', 'fast',
-          '-crf', '23',
-          '-pix_fmt', 'yuv420p',
-          '-movflags', '+faststart',
-          '-vf', 'scale=-2:720',
-          h264Path
-        ], 'H.264 encoding')
-    }
+        ...h265Args,
+        ...h264Args
+      ], 'Live encoding')
 
     return {
       h265: h265Path,
-      h264: h264Path
+      h264: wantH264 ? livePreviewPath : undefined
     }
   } finally {
     for (const path of tempFiles) {

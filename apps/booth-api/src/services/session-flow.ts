@@ -3,7 +3,7 @@ import { db } from '../db/index.js'
 import { logger } from './logger.js'
 import { getConfig } from './config.js'
 import { getPrinterSettings } from './printer.js'
-import { queueSession } from './sync-worker.js'
+import { queueSession, queueOutput } from './sync-worker.js'
 
 // Alur status sesi (server = sumber kebenaran, kiosk mengikuti):
 //   created --pilih frame/timeout--> frame_selected (tahap Action)
@@ -46,6 +46,28 @@ export function startPreview(sessionId: string): void {
   db.prepare(`
     UPDATE sessions SET status = 'previewing', stage_expires_at = ? WHERE id = ?
   `).run(expiresIn(stageSeconds('preview')), sessionId)
+  // render mulai selagi tamu melihat Preview (foto, frame & teks sudah final) — QR tidak menunggu render
+  ensureRenderJobs(sessionId)
+}
+
+/** Buat render job sesi bila belum ada (idempoten). */
+function ensureRenderJobs(sessionId: string): string[] {
+  const existing = db.prepare('SELECT type FROM render_jobs WHERE session_id = ?').all(sessionId) as Array<{ type: string }>
+  if (existing.length > 0) return existing.map((j) => j.type)
+
+  const renderJobs = ['strip']
+  if (getConfig()?.output_mode === 'full') {
+    renderJobs.push('gif', 'live_h264', 'live_h265')
+  }
+
+  const now = new Date().toISOString()
+  for (const type of renderJobs) {
+    db.prepare(`
+      INSERT INTO render_jobs (id, session_id, type, status, created_at)
+      VALUES (?, ?, ?, 'pending', ?)
+    `).run(uuidv4(), sessionId, type, now)
+  }
+  return renderJobs
 }
 
 export interface FinalizeResult {
@@ -61,8 +83,8 @@ export function finalizeSession(sessionId: string, requestPrint: boolean): Final
     const session = db.prepare('SELECT status FROM sessions WHERE id = ?').get(sessionId) as { status: string } | undefined
     if (!session) throw new Error('Session not found')
 
-    const existing = db.prepare('SELECT type FROM render_jobs WHERE session_id = ?').all(sessionId) as Array<{ type: string }>
-    if (existing.length > 0 || ['processing', 'completed', 'failed'].includes(session.status)) {
+    if (['processing', 'completed', 'failed', 'abandoned'].includes(session.status)) {
+      const existing = db.prepare('SELECT type FROM render_jobs WHERE session_id = ?').all(sessionId) as Array<{ type: string }>
       const printJob = db.prepare('SELECT id FROM print_jobs WHERE session_id = ?').get(sessionId)
       return {
         status: session.status,
@@ -72,23 +94,13 @@ export function finalizeSession(sessionId: string, requestPrint: boolean): Final
       }
     }
 
-    const config = getConfig()
-    const renderJobs = ['strip']
-    if (config?.output_mode === 'full') {
-      renderJobs.push('gif', 'live_h264', 'live_h265')
-    }
-
     db.prepare(`
       UPDATE sessions SET status = 'processing', stage_expires_at = ? WHERE id = ?
     `).run(expiresIn(stageSeconds('processing')), sessionId)
 
+    // biasanya sudah dibuat saat Preview dimulai; di sini hanya cadangan
+    const renderJobs = ensureRenderJobs(sessionId)
     const now = new Date().toISOString()
-    for (const type of renderJobs) {
-      db.prepare(`
-        INSERT INTO render_jobs (id, session_id, type, status, created_at)
-        VALUES (?, ?, ?, 'pending', ?)
-      `).run(uuidv4(), sessionId, type, now)
-    }
 
     const printer = getPrinterSettings()
     const print = requestPrint && printer.print_mode === 'local'
@@ -107,6 +119,11 @@ export function finalizeSession(sessionId: string, requestPrint: boolean): Final
     logger.info({ session_id: sessionId, render_jobs: result.render_jobs, print: result.print_requested }, 'Session finalized')
     // sesi masuk cloud sejak awal: QR langsung bisa dibuka, file menyusul tiap kali render selesai
     queueSession(db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId))
+    // output yang sudah selesai dirender selama Preview langsung diunggah
+    const ready = db.prepare(`SELECT type, path FROM outputs WHERE session_id = ? AND status = 'done'`).all(sessionId) as Array<{ type: string; path: string }>
+    for (const o of ready) queueOutput(sessionId, o.type, o.path)
+    // semua render bisa saja sudah selesai sebelum tamu menekan Print
+    completeSessionIfDone(sessionId)
   }
   return result
 }

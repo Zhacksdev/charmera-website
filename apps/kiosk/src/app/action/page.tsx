@@ -9,27 +9,32 @@ import { FrameComposite } from '../../components/FrameComposite'
 import { shotNumbers } from '../../lib/frame-layout'
 
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
+// jeda sebelum foto pertama (tamu bersiap) dan antar-foto (ganti gaya)
+const FIRST_SHOT_DELAY_MS = 2500
+const NEXT_SHOT_DELAY_MS = 1500
+const UPLOAD_ATTEMPTS = 3
 
 export default function ActionPage() {
   return <Suspense fallback={<main className="flex min-h-screen items-center justify-center text-cream">Menyiapkan kamera...</main>}><ActionContent /></Suspense>
 }
 
+type UploadState = 'uploading' | 'done' | 'failed'
+
 function ActionContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const sessionId = searchParams.get('session')
-  
+
   const { selectedFrame, photos, setPhoto, setSession, customText, setCustomText } = useKioskStore()
-  
+
   const { videoRef, isReady, error: cameraError, startCamera, stopCamera, capturePhoto } = useCamera({
     width: 1920,
     height: 1080,
     mirror: true
   })
-  
-  const { isRecording, startRecording, getClipBlob } = useClipRecorder()
-  
-  const [currentSlot, setCurrentSlot] = useState(0)
+
+  const { startRecording, getClipBlob } = useClipRecorder()
+
   const [countdown, setCountdown] = useState(0)
   const [isCapturing, setIsCapturing] = useState(false)
   const [retakeCount, setRetakeCount] = useState(0)
@@ -37,14 +42,24 @@ function ActionContent() {
   const [timerSnapshot, setTimerSnapshot] = useState<any>(null)
   const [outputMode, setOutputMode] = useState<'photo_only' | 'full'>('photo_only')
   const [captureError, setCaptureError] = useState('')
-  
+  const [uploads, setUploads] = useState<Record<number, UploadState>>({})
+  const [continuing, setContinuing] = useState(false)
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const capturingRef = useRef(false)
+  const uploadPromisesRef = useRef(new Map<number, Promise<boolean>>())
 
   const slots = selectedFrame?.layout?.slots || []
   // slot bernomor sama berbagi satu foto — jumlah jepretan = nomor slot unik
   const totalSlots = shotNumbers(slots).length
   const maxRetake = timerSnapshot?.max_retake || 3
+
+  // foto berikutnya dalam urutan otomatis = indeks pertama yang belum terisi
+  let nextShot = 0
+  while (nextShot < totalSlots && photos.has(nextShot)) nextShot++
+  const allSlotsFilled = totalSlots > 0 && nextShot >= totalSlots
+  const failedShots = Object.entries(uploads).filter(([, state]) => state === 'failed').map(([slot]) => Number(slot))
 
   useEffect(() => {
     startCamera()
@@ -61,7 +76,7 @@ function ActionContent() {
       .catch((err) => console.error('Failed to load output mode:', err))
   }, [])
 
-  const { remainingSec, isExpired } = useStageTimer({
+  const { remainingSec } = useStageTimer({
     sessionId,
     activeStatuses: ['frame_selected', 'capturing'],
     // timer Action habis: server memindahkan sesi ke Preview bila ada foto, atau abandoned bila kosong
@@ -76,18 +91,18 @@ function ActionContent() {
 
   useEffect(() => {
     if (!sessionId) return
-    
+
     const fetchSession = async () => {
       try {
         const res = await fetch(`${BOOTH_API}/api/sessions/${sessionId}`)
         if (res.ok) {
           const data = await res.json()
           setSession(data)
-          
+
           if (data.timer_snapshot) {
             setTimerSnapshot(data.timer_snapshot)
           }
-          
+
           const reminderThreshold = data.timer_snapshot?.reminder_sec || 15
           setShowReminder(data.remaining_sec <= reminderThreshold && data.remaining_sec > 0)
         }
@@ -95,20 +110,53 @@ function ActionContent() {
         console.error('Failed to poll session:', err)
       }
     }
-    
+
     fetchSession()
     const interval = setInterval(fetchSession, 1000)
     return () => clearInterval(interval)
-  }, [sessionId, setSession, photos.size, totalSlots])
+  }, [sessionId, setSession])
 
-  const handleCapture = useCallback(async (requestedSlot?: number) => {
-    if (!isReady || !sessionId || isCapturing) return
-    const slotIndex = requestedSlot ?? currentSlot
+  /** Unggah di belakang layar (dengan retry) — tamu tidak menunggu upload sebelum foto berikutnya */
+  const uploadShot = useCallback((slotIndex: number, photoBlob: Blob, clipBlob: Blob | null) => {
+    setUploads((current) => ({ ...current, [slotIndex]: 'uploading' }))
+
+    const run = async (): Promise<boolean> => {
+      for (let attempt = 1; attempt <= UPLOAD_ATTEMPTS; attempt++) {
+        try {
+          const formData = new FormData()
+          formData.append('slot_index', slotIndex.toString())
+          formData.append('photo', photoBlob, `slot_${slotIndex}.jpg`)
+          if (clipBlob) formData.append('clip', clipBlob, `slot_${slotIndex}.${clipBlob.type.includes('mp4') ? 'mp4' : 'webm'}`)
+
+          const res = await fetch(`${BOOTH_API}/api/sessions/${sessionId}/photos`, { method: 'POST', body: formData })
+          if (res.ok) {
+            setUploads((current) => ({ ...current, [slotIndex]: 'done' }))
+            return true
+          }
+          console.error(`Upload slot ${slotIndex} HTTP ${res.status}`)
+        } catch (err) {
+          console.error(`Upload slot ${slotIndex} failed:`, err)
+        }
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1000))
+      }
+      setUploads((current) => ({ ...current, [slotIndex]: 'failed' }))
+      setCaptureError(`Foto ${slotIndex + 1} belum terkirim. Periksa Wi-Fi, lalu ambil ulang foto itu.`)
+      return false
+    }
+
+    const promise = run()
+    uploadPromisesRef.current.set(slotIndex, promise)
+    return promise
+  }, [sessionId])
+
+  const handleCapture = useCallback(async (slotIndex: number) => {
+    if (!isReady || !sessionId || capturingRef.current) return
     if (slotIndex >= totalSlots) return
-    
+
+    capturingRef.current = true
     setIsCapturing(true)
     setCaptureError('')
-    
+
     try {
       const stream = videoRef.current?.srcObject as MediaStream
       // Chrome Android/desktop merekam WebM, Chrome/Safari iPad hanya MP4
@@ -118,10 +166,10 @@ function ActionContent() {
       if (stream && canRecordClip) {
         startRecording(stream)
       }
-      
+
       const countdownSec = timerSnapshot?.countdown || 5
       setCountdown(countdownSec)
-      
+
       countdownIntervalRef.current = setInterval(() => {
         setCountdown(prev => {
           if (prev <= 1) {
@@ -133,63 +181,60 @@ function ActionContent() {
           return prev - 1
         })
       }, 1000)
-      
+
       await new Promise(resolve => setTimeout(resolve, countdownSec * 1000))
-      
+
       const photoBlob = await capturePhoto()
       if (!photoBlob) throw new Error('Failed to capture photo')
-      
+
       const clipBlob = canRecordClip ? await getClipBlob() : null
-      
-      const formData = new FormData()
-      formData.append('slot_index', slotIndex.toString())
-      formData.append('photo', photoBlob, `slot_${slotIndex}.jpg`)
-      if (clipBlob) formData.append('clip', clipBlob, `slot_${slotIndex}.${clipBlob.type.includes('mp4') ? 'mp4' : 'webm'}`)
-      
-      const uploadResponse = await fetch(`${BOOTH_API}/api/sessions/${sessionId}/photos`, {
-        method: 'POST',
-        body: formData,
+
+      // tampil langsung dari blob lokal; upload menyusul
+      setPhoto(slotIndex, {
+        slot_index: slotIndex,
+        dataUrl: URL.createObjectURL(photoBlob),
+        clipDataUrl: clipBlob ? URL.createObjectURL(clipBlob) : undefined
       })
-      if (!uploadResponse.ok) {
-        throw new Error(`Unggahan foto gagal (HTTP ${uploadResponse.status})`)
-      }
-      
-      const photoDataUrl = URL.createObjectURL(photoBlob)
-      const clipDataUrl = clipBlob ? URL.createObjectURL(clipBlob) : undefined
-      
-      setPhoto(slotIndex, { 
-        slot_index: slotIndex, 
-        dataUrl: photoDataUrl, 
-        clipDataUrl: clipDataUrl
-      })
-      
-      if (slotIndex >= currentSlot && slotIndex < totalSlots - 1) {
-        setCurrentSlot(slotIndex + 1)
-      }
-      
+      void uploadShot(slotIndex, photoBlob, clipBlob)
     } catch (err) {
       console.error('Capture failed:', err)
-      setCaptureError('Foto belum terkirim. Periksa koneksi Wi-Fi, lalu coba ambil ulang.')
+      setCaptureError('Kamera gagal mengambil foto. Coba ulangi.')
     } finally {
+      capturingRef.current = false
       setIsCapturing(false)
       setCountdown(0)
       if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current)
       }
     }
-  }, [isReady, sessionId, isCapturing, currentSlot, totalSlots, startRecording, getClipBlob, capturePhoto, setPhoto, videoRef, timerSnapshot, outputMode])
+  }, [isReady, sessionId, totalSlots, startRecording, getClipBlob, capturePhoto, setPhoto, videoRef, timerSnapshot, outputMode, uploadShot])
 
-  const allSlotsFilled = photos.size >= totalSlots
+  // urutan otomatis: foto 1 → 2 → ... tanpa tombol, dengan jeda singkat untuk ganti gaya
+  useEffect(() => {
+    if (!isReady || !sessionId || isCapturing || allSlotsFilled || totalSlots === 0) return
+    if (remainingSec > 0 && remainingSec < (timerSnapshot?.countdown || 5) + 2) return
+    const timer = setTimeout(() => void handleCapture(nextShot), nextShot === 0 ? FIRST_SHOT_DELAY_MS : NEXT_SHOT_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [isReady, sessionId, isCapturing, allSlotsFilled, totalSlots, nextShot, handleCapture, remainingSec, timerSnapshot])
 
-  const handleRetake = useCallback(async () => {
-    if (retakeCount >= maxRetake || isCapturing) return
-    
-    setRetakeCount(retakeCount + 1)
-    await handleCapture(allSlotsFilled ? currentSlot : Math.max(0, currentSlot - 1))
-  }, [retakeCount, maxRetake, isCapturing, handleCapture, allSlotsFilled, currentSlot])
+  const handleRetake = useCallback(async (slotIndex: number) => {
+    if (isCapturing) return
+    if (uploads[slotIndex] !== 'failed') {
+      if (retakeCount >= maxRetake) return
+      setRetakeCount((count) => count + 1)
+    }
+    await handleCapture(slotIndex)
+  }, [isCapturing, uploads, retakeCount, maxRetake, handleCapture])
 
   const handleContinue = useCallback(async () => {
-    if (!sessionId) return
+    if (!sessionId || continuing) return
+    setContinuing(true)
+    // pastikan semua foto sudah sampai di booth sebelum Preview/render
+    const results = await Promise.all(Array.from(uploadPromisesRef.current.values()))
+    if (results.some((ok) => !ok)) {
+      setContinuing(false)
+      return
+    }
     try {
       // server pindah ke tahap Preview dengan timer preview sendiri
       await fetch(`${BOOTH_API}/api/sessions/${sessionId}/advance`, {
@@ -201,12 +246,12 @@ function ActionContent() {
       console.error('Failed to advance session:', err)
     }
     router.push(`/preview?session=${sessionId}`)
-  }, [sessionId, router])
+  }, [sessionId, router, continuing])
 
   const handleCustomText = useCallback(async (text: string) => {
     if (!sessionId) return
     setCustomText(text)
-    
+
     try {
       await fetch(`${BOOTH_API}/api/sessions/${sessionId}/text`, {
         method: 'POST',
@@ -219,7 +264,10 @@ function ActionContent() {
   }, [sessionId, setCustomText])
 
   const minPhotoTime = 8
-  const canRetake = remainingSec >= minPhotoTime && retakeCount < maxRetake && !isCapturing && (currentSlot > 0 || allSlotsFilled)
+  const lastShot = totalSlots - 1
+  const canRetake = allSlotsFilled && remainingSec >= minPhotoTime && retakeCount < maxRetake && !isCapturing
+  const uploadsPending = Object.values(uploads).some((state) => state === 'uploading')
+  const canContinue = allSlotsFilled && !isCapturing && failedShots.length === 0 && !continuing
 
   if (cameraError) {
     return (
@@ -236,21 +284,29 @@ function ActionContent() {
     )
   }
 
+  const statusText = !isReady
+    ? 'Menyiapkan kamera...'
+    : isCapturing
+      ? `Foto ${Math.min(nextShot + 1, totalSlots)} dari ${totalSlots}`
+      : allSlotsFilled
+        ? (continuing && uploadsPending ? 'Mengirim foto...' : 'Semua foto sudah diambil!')
+        : nextShot === 0 ? 'Bersiap, foto dimulai otomatis...' : `Ganti gaya! Foto ${nextShot + 1} sebentar lagi`
+
   return (
     <main className="relative flex min-h-screen flex-col overflow-y-auto p-5 md:p-8">
       <header className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] items-center gap-2 md:gap-3">
         <div className="timer-pill justify-self-start">{formatTimer(remainingSec)}</div>
         <h1 className="text-center text-xl font-extrabold text-cream md:text-5xl">Saatnya berekspresi!</h1>
-        <button onClick={handleContinue} disabled={!allSlotsFilled} className="btn-primary min-h-14 justify-self-end px-3 text-base md:min-h-16 md:px-8 md:text-lg">Lanjut</button>
+        <button onClick={handleContinue} disabled={!canContinue} className="btn-primary min-h-14 justify-self-end px-3 text-base md:min-h-16 md:px-8 md:text-lg">Lanjut</button>
       </header>
-      <div className="mt-2 text-center text-sm font-bold text-cream/80">Slot {Math.min(currentSlot + 1, totalSlots)} / {totalSlots}{retakeCount > 0 ? ` · Retake ${retakeCount}/${maxRetake}` : ''}</div>
-      
+      <div className="mt-2 text-center text-base font-bold text-cream/90" role="status">{statusText}{retakeCount > 0 ? ` · Retake ${retakeCount}/${maxRetake}` : ''}</div>
+
       {showReminder && !isCapturing && (
         <div className="reminder-banner">
           Waktu hampir habis! {remainingSec} detik tersisa.
         </div>
       )}
-      
+
       <div className="grid flex-1 grid-cols-1 items-center gap-6 py-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)] lg:gap-12">
         <div className="mx-auto w-full max-w-[min(42vh,340px)] lg:max-w-[440px]">
           {selectedFrame && <FrameComposite
@@ -259,7 +315,7 @@ function ActionContent() {
             renderSlot={(shotIndex) => {
               const photo = photos.get(shotIndex)
               if (photo) return <img src={photo.dataUrl} alt={`Foto ${shotIndex + 1}`} />
-              return <span className={`flex h-full w-full items-center justify-center ${shotIndex === currentSlot ? 'frame-composite-current' : ''}`}>Foto {shotIndex + 1}</span>
+              return <span className={`flex h-full w-full items-center justify-center ${shotIndex === nextShot ? 'frame-composite-current' : ''}`}>Foto {shotIndex + 1}</span>
             }}
           />}
         </div>
@@ -273,7 +329,7 @@ function ActionContent() {
             style={{ transform: 'scaleX(-1)' }}
           />
           <canvas ref={canvasRef} className="hidden" />
-          
+
           {isCapturing && countdown > 0 && (
             <div className="countdown-overlay">
               <div className="countdown-number">
@@ -284,37 +340,37 @@ function ActionContent() {
           {!isReady && !cameraError && <div className="absolute inset-0 flex items-center justify-center bg-char/80 text-lg font-bold text-cream">Menyiapkan kamera...</div>}
         </div>
       </div>
-      
+
+      {/* tidak ada tombol ambil foto: urutan berjalan otomatis; tombol hanya muncul setelah semua foto */}
       <div className="flex flex-wrap justify-center gap-3">
-        <button
-          onClick={() => handleCapture()}
-          disabled={isCapturing || !isReady || currentSlot >= totalSlots}
-          className="btn-primary min-w-52 text-xl"
-        >
-          {isCapturing ? 'Mengambil foto...' : `Ambil foto ${Math.min(currentSlot + 1, totalSlots)}`}
-        </button>
-        
-        {canRetake && currentSlot > 0 && (
+        {failedShots.map((slotIndex) => (
+          <button key={slotIndex} onClick={() => handleRetake(slotIndex)} disabled={isCapturing} className="btn-secondary min-w-40 text-lg">
+            Ambil ulang foto {slotIndex + 1}
+          </button>
+        ))}
+
+        {canRetake && failedShots.length === 0 && (
           <button
-            onClick={handleRetake}
+            onClick={() => handleRetake(lastShot)}
             className="btn-secondary min-w-40 text-lg"
           >
-            Retake
+            Ulangi foto terakhir
           </button>
         )}
-        
+
         {allSlotsFilled && (
           <button
             onClick={handleContinue}
+            disabled={!canContinue}
             className="btn-primary text-xl px-8 py-4"
           >
-            Lanjut
+            {continuing ? 'Mengirim foto...' : 'Lanjut'}
           </button>
         )}
       </div>
 
       {captureError && <div role="alert" className="mx-auto mt-3 max-w-xl rounded-lg bg-cream px-4 py-3 text-center font-bold text-cherry">{captureError}</div>}
-      
+
       <div className="mx-auto mt-4 w-full max-w-xl">
         <label htmlFor="custom-text" className="mb-2 block text-center text-xl font-extrabold text-cream">Custom textnya di sini ya!</label>
         <input
