@@ -178,9 +178,10 @@ deviceRouter.post('/sessions/:id/complete', async (req, res) => {
         }, { onConflict: 'session_id,type' })
     }
 
+    // output datang satu per satu (strip dulu); status akhir sesi dikirim booth lewat POST /sessions
     const { error } = await supabase
       .from('sessions')
-      .update({ status: 'completed', sync_status: 'synced', synced_at: new Date().toISOString() })
+      .update({ sync_status: 'synced', synced_at: new Date().toISOString() })
       .eq('id', id)
 
     if (error) {

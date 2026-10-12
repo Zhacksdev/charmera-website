@@ -129,6 +129,62 @@ button:disabled {
   visibility: hidden;
 }
 
+.frame-composite {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 12px 30px rgba(38, 33, 31, 0.2);
+}
+
+.frame-composite-slot {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--rose);
+  color: var(--cherry);
+  font-weight: 800;
+  font-size: clamp(0.7rem, 1.4vw, 1rem);
+}
+
+.frame-composite-slot img,
+.frame-composite-slot video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.frame-composite-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.frame-composite-current {
+  outline: 4px solid var(--butter);
+  outline-offset: -4px;
+}
+
+.gif-preview {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: var(--char);
+  box-shadow: 0 12px 30px rgba(38, 33, 31, 0.2);
+}
+
+.gif-preview img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .frame-choice {
   min-height: 0;
   border-radius: 0;

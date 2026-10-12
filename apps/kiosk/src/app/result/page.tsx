@@ -23,7 +23,11 @@ function ResultContent() {
   const [remainingSec, setRemainingSec] = useState(QR_TIMER)
   const [printStatus, setPrintStatus] = useState<string | null>(null)
   const [printError, setPrintError] = useState<string | null>(null)
-  
+  const [outputs, setOutputs] = useState<Array<{ type: string; status: string }>>([])
+  const [failedTypes, setFailedTypes] = useState<string[]>([])
+  const [outputMode, setOutputMode] = useState<'photo_only' | 'full'>('photo_only')
+  const [sessionFailed, setSessionFailed] = useState(false)
+
   useEffect(() => {
     if (!sessionId) return
     let qrRendered = false
@@ -36,6 +40,9 @@ function ResultContent() {
           setPublicCode(data.public_code)
           setPrintStatus(data.print_status)
           setPrintError(data.print_error)
+          setOutputs(data.outputs || [])
+          setFailedTypes((data.failed_jobs || []).map((j: { type: string }) => j.type))
+          setSessionFailed(data.status === 'failed' || data.status === 'abandoned')
           
           if (data.qr_url && !qrRendered) {
             qrRendered = true
@@ -68,8 +75,18 @@ function ResultContent() {
       }
     }
     
+    async function fetchOutputMode() {
+      try {
+        const res = await fetch(`${BOOTH_API}/api/status`)
+        if (res.ok && (await res.json()).output_mode === 'full') setOutputMode('full')
+      } catch (err) {
+        console.error('Failed to fetch output mode:', err)
+      }
+    }
+
     fetchResult()
     fetchTimer()
+    fetchOutputMode()
     // cetak biasanya masih antre/berjalan saat QR tampil — ikuti statusnya
     const interval = setInterval(fetchResult, 2000)
     return () => clearInterval(interval)
@@ -108,6 +125,26 @@ function ResultContent() {
       </div>
 
       <div className="max-w-xl text-xl font-extrabold text-cream md:text-3xl">Scan QR untuk mengunduh hasil fotomu</div>
+
+      {sessionFailed ? (
+        <div role="alert" className="rounded-xl bg-cream px-5 py-3 font-bold text-cherry">Hasil foto gagal diproses. Hubungi petugas booth.</div>
+      ) : (
+        // file disiapkan di belakang; halaman download menampilkan tiap file begitu siap
+        <ul className="flex flex-wrap justify-center gap-3" aria-label="Status file">
+          {[
+            { label: 'Foto Strip', types: ['strip'] },
+            ...(outputMode === 'full' ? [{ label: 'GIF', types: ['gif'] }, { label: 'Live Photo', types: ['live_h264', 'live_h265'] }] : []),
+          ].map(({ label, types }) => {
+            const done = outputs.some((o) => types.includes(o.type) && o.status === 'done')
+            const failed = !done && types.every((t) => failedTypes.includes(t))
+            return (
+              <li key={label} className={`rounded-full px-4 py-2 text-sm font-extrabold ${done ? 'bg-butter text-char' : 'bg-cream/20 text-cream'}`}>
+                {done ? '✓' : failed ? '✕' : '…'} {label}{!done && !failed ? ' disiapkan' : ''}
+              </li>
+            )
+          })}
+        </ul>
+      )}
       <div className="rounded-xl bg-cream px-5 py-3 text-cherry">
         <span className="font-bold">Kode:</span> <span className="font-mono font-extrabold">{publicCode || '...'}</span>
       </div>

@@ -9,14 +9,20 @@ interface DownloadFile {
   type: string
   s3_key: string
   url?: string | null
+  download_url?: string | null
 }
+
+// QR biasanya di-scan sebelum file selesai: tunggu sesi muncul, lalu muat ulang sampai semua file masuk
+const RETRY_MS = 4000
+const MAX_WAIT_MS = 10 * 60 * 1000
 
 export default function DownloadPage() {
   const params = useParams()
   const code = typeof params?.code === 'string' ? params.code : Array.isArray(params?.code) ? params.code[0] : null
-  
+
   const [status, setStatus] = useState<'loading' | 'processing' | 'ready' | 'error'>('loading')
   const [files, setFiles] = useState<DownloadFile[]>([])
+  const [complete, setComplete] = useState(false)
   const [error, setError] = useState<string>('')
   const [expiresAt, setExpiresAt] = useState<string>('')
 
@@ -26,59 +32,76 @@ export default function DownloadPage() {
       setError('Kode tidak valid')
       return
     }
-    
+
     let cancelled = false
     let retryTimer: ReturnType<typeof setTimeout>
-    // QR bisa di-scan sebelum booth selesai sync: 404/202 = "masih diproses", coba lagi ±3 menit
-    const PROCESSING_RETRY_MS = 4000
-    const MAX_PROCESSING_ATTEMPTS = 45
-    let attempts = 0
+    const startedAt = Date.now()
 
-    const retryLater = (message: string) => {
-      attempts++
-      if (attempts >= MAX_PROCESSING_ATTEMPTS) {
+    const retryLater = () => {
+      if (Date.now() - startedAt > MAX_WAIT_MS) return false
+      retryTimer = setTimeout(fetchDownloads, RETRY_MS)
+      return true
+    }
+
+    const waitForSession = (message: string) => {
+      if (retryLater()) {
+        setStatus('processing')
+        setError(message)
+      } else {
         setStatus('error')
         setError('Hasil foto belum tersedia. Coba buka lagi link ini beberapa menit lagi.')
-        return
       }
-      setStatus('processing')
-      setError(message)
-      retryTimer = setTimeout(fetchDownloads, PROCESSING_RETRY_MS)
     }
-    
+
     async function fetchDownloads() {
       if (cancelled) return
       try {
         const res = await fetch(`${PUBLIC_API}/download/${code}`)
         const data = await res.json()
-        
+
         if (cancelled) return
-        
+
         if (res.status === 202 || res.status === 404 || data.status === 'processing') {
-          retryLater(data.message || 'Sedang diproses, coba lagi sebentar')
-        } else if (res.ok && data.status === 'ready' && (data.files || []).length === 0) {
-          retryLater('Menyiapkan file...')
+          waitForSession(data.message || 'Fotomu sedang disiapkan...')
         } else if (res.ok && data.status === 'ready') {
-          setStatus('ready')
-          setFiles(data.files || [])
+          const incoming: DownloadFile[] = data.files || []
+          // link presigned berubah tiap request — pertahankan yang lama agar preview tidak memuat ulang
+          setFiles((current) => [
+            ...current,
+            ...incoming.filter((file) => !current.some((existing) => existing.type === file.type))
+          ])
           setExpiresAt(data.expires_at)
+          const isComplete = data.complete !== false
+          setComplete(isComplete)
+          if (incoming.length === 0 && !isComplete) {
+            waitForSession('Fotomu sedang disiapkan...')
+            return
+          }
+          setStatus('ready')
+          if (!isComplete && !retryLater()) setComplete(true)
         } else {
           setStatus('error')
           setError(data.message || data.error || 'File tidak ditemukan')
         }
       } catch (err) {
         // jaringan HP putus sesaat — coba lagi, jangan langsung gagal
-        if (!cancelled) retryLater('Menghubungkan...')
+        if (!cancelled) waitForSession('Menghubungkan...')
       }
     }
-    
+
     fetchDownloads()
-    
+
     return () => {
       cancelled = true
       clearTimeout(retryTimer)
     }
   }, [code])
+
+  const byType = (type: string) => files.find((file) => file.type === type && file.url)
+  const strip = byType('strip')
+  const gif = byType('gif')
+  const livePreview = byType('live_h264') || byType('live_h265')
+  const liveDownload = byType('live_h265') || byType('live_h264')
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-8 bg-cream">
@@ -89,13 +112,13 @@ export default function DownloadPage() {
             Download hasil foto kamu
           </p>
         </div>
-        
+
         {status === 'loading' && (
           <div className="text-center text-char opacity-75">
             Memuat...
           </div>
         )}
-        
+
         {status === 'processing' && (
           <div className="card text-center">
             <div className="mb-4">
@@ -106,43 +129,42 @@ export default function DownloadPage() {
             </p>
           </div>
         )}
-        
-        {status === 'ready' && files.length > 0 && (
+
+        {status === 'ready' && (
           <div className="space-y-4">
-            {files.map((file) => (
-              <div key={file.type} className="card">
-                <div className="font-bold text-char mb-2">
-                  {file.type === 'strip' && 'Strip Photo'}
-                  {file.type === 'gif' && 'GIF Animation'}
-                  {file.type === 'live_h265' && 'Live Photo (High Quality)'}
-                  {file.type === 'live_h264' && 'Live Photo'}
-                </div>
-                {file.url ? (
-                  <a
-                    href={file.url}
-                    download
-                    className="btn-primary w-full block text-center"
-                  >
-                    Download
-                  </a>
-                ) : (
-                  <button className="btn-primary w-full" disabled>
-                    Belum tersedia
-                  </button>
-                )}
+            {strip && (
+              <OutputCard title="Foto Strip" downloadUrl={strip.download_url || strip.url!}>
+                <img src={strip.url!} alt="Foto strip" className="w-full rounded-lg" />
+              </OutputCard>
+            )}
+            {gif && (
+              <OutputCard title="GIF" downloadUrl={gif.download_url || gif.url!}>
+                <img src={gif.url!} alt="GIF animasi" className="w-full rounded-lg" />
+              </OutputCard>
+            )}
+            {livePreview && liveDownload && (
+              <OutputCard title="Live Photo" downloadUrl={liveDownload.download_url || liveDownload.url!}>
+                <video src={livePreview.url!} autoPlay muted loop playsInline className="w-full rounded-lg" />
+              </OutputCard>
+            )}
+
+            {!complete && (
+              <div className="card flex items-center justify-center gap-3 text-char">
+                <div className="w-6 h-6 border-4 border-cherry border-t-transparent rounded-full animate-spin" />
+                <span className="opacity-75">File lainnya sedang disiapkan...</span>
               </div>
-            ))}
-            
+            )}
+
             <div className="text-xs text-char opacity-50 text-center">
               File expires: {new Date(expiresAt).toLocaleDateString('id-ID')}
             </div>
-            
+
             <div className="text-sm text-cherry text-center mt-6">
               #WearYourChamera
             </div>
           </div>
         )}
-        
+
         {status === 'error' && (
           <div className="card text-center">
             <p className="text-cherry mb-4">⚠️ {error}</p>
@@ -153,5 +175,17 @@ export default function DownloadPage() {
         )}
       </div>
     </main>
+  )
+}
+
+function OutputCard({ title, downloadUrl, children }: { title: string; downloadUrl: string; children: React.ReactNode }) {
+  return (
+    <div className="card">
+      <div className="font-bold text-char mb-3">{title}</div>
+      <div className="mb-3">{children}</div>
+      <a href={downloadUrl} download className="btn-primary w-full block text-center">
+        Download
+      </a>
+    </div>
   )
 }

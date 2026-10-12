@@ -94,14 +94,22 @@ router.get('/download/:code', async (req, res) => {
 
     logger.info({ code, ip }, 'Download page accessed')
 
-    const files = await Promise.all((outputs || []).map(async (o: any) => ({
-      type: o.type,
-      s3_key: o.s3_key,
-      url: isS3Configured() ? await presignGet(o.s3_key, 3600) : null
-    })))
+    // url = tampil di halaman (preview), download_url = langsung terunduh dengan nama file rapi
+    const files = await Promise.all((outputs || []).map(async (o: any) => {
+      const ext = o.s3_key.split('.').pop() || 'bin'
+      const name = `chamera-${code}-${o.type.replace(/_h26[45]$/, '')}.${ext}`
+      return {
+        type: o.type,
+        s3_key: o.s3_key,
+        url: isS3Configured() ? await presignGet(o.s3_key, 3600) : null,
+        download_url: isS3Configured() ? await presignGet(o.s3_key, 3600, name) : null
+      }
+    }))
 
     res.json({
       status: 'ready',
+      // false selama booth masih merender/mengunggah file lain (GIF, Live) — halaman download terus memuat ulang
+      complete: session.status !== 'processing',
       public_code: code,
       files,
       expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()

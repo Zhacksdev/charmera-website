@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useKioskStore } from '../../stores/kioskStore'
 import { useStageTimer } from '../../hooks'
+import { FrameComposite } from '../../components/FrameComposite'
 
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
@@ -58,7 +59,8 @@ function PreviewContent() {
       })
       
       if (res.ok) {
-        router.push(`/processing?session=${sessionId}`)
+        // QR langsung tampil; render & unggah berjalan di belakang, halaman download menyusul
+        router.push(`/result?session=${sessionId}`)
         return
       }
     } catch (err) {
@@ -73,7 +75,6 @@ function PreviewContent() {
   const outputMode = config?.output_mode || 'photo_only'
   const showPrintButton = config?.print_mode === 'local'
   const capturedPhotos = Array.from(photos.values()).sort((first, second) => first.slot_index - second.slot_index)
-  const firstClip = capturedPhotos.find((photo) => photo.clipDataUrl)?.clipDataUrl
 
   return (
     <main className="relative flex min-h-screen flex-col overflow-y-auto p-5 md:p-8">
@@ -85,8 +86,8 @@ function PreviewContent() {
 
       <div className="grid flex-1 grid-cols-1 items-center gap-5 py-5 md:grid-cols-3 md:gap-8">
         <OutputPreview title="Foto Strip" photos={capturedPhotos} frame={selectedFrame} customText={customText} />
-        {outputMode === 'full' && <OutputPreview title="GIF" photos={capturedPhotos} frame={selectedFrame} customText={customText} animated />}
-        {outputMode === 'full' && <OutputPreview title="Live Photo" photos={capturedPhotos} frame={selectedFrame} customText={customText} clip={firstClip} />}
+        {outputMode === 'full' && <OutputPreview title="GIF" photos={capturedPhotos} frame={selectedFrame} customText={customText} variant="gif" />}
+        {outputMode === 'full' && <OutputPreview title="Live Photo" photos={capturedPhotos} frame={selectedFrame} customText={customText} variant="live" />}
       </div>
 
       <div className="flex justify-center pb-2">
@@ -102,39 +103,74 @@ function PreviewContent() {
   )
 }
 
+type CapturedPhoto = { slot_index: number; dataUrl: string; clipDataUrl?: string }
+
+// sama dengan render-gif (booth-api): foto mentah tanpa frame, ganti tiap ±0,8 detik
+const GIF_FRAME_MS = 800
+
 function OutputPreview({
   title,
   photos,
   frame,
   customText,
-  animated = false,
-  clip,
+  variant = 'strip',
 }: {
   title: string
-  photos: Array<{ slot_index: number; dataUrl: string; clipDataUrl?: string }>
+  photos: CapturedPhoto[]
   frame: ReturnType<typeof useKioskStore.getState>['selectedFrame']
   customText: string
-  animated?: boolean
-  clip?: string
+  variant?: 'strip' | 'gif' | 'live'
 }) {
-  const canvas = frame?.layout.canvas || { w: 2, h: 3 }
-  const slots = frame?.layout.slots || []
+  const photoAt = (shotIndex: number) => photos.find((item) => item.slot_index === shotIndex)
 
   return (
     <section className="mx-auto flex w-full max-w-[340px] flex-col items-center" aria-label={title}>
       <h2 className="mb-2 text-center text-2xl font-extrabold text-cream">{title}</h2>
-      <div className="output-preview" style={{ aspectRatio: `${canvas.w}/${canvas.h}` }}>
-        {clip ? (
-          <video src={clip} poster={photos[0]?.dataUrl} autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover" />
-        ) : slots.length > 0 ? slots.map((slot, index) => {
-          const photo = photos.find((item) => item.slot_index === index)
-          return <div key={`${slot.n}-${index}`} className={`output-photo ${animated ? 'output-photo-animated' : ''}`} style={{ left: `${slot.x / canvas.w * 100}%`, top: `${slot.y / canvas.h * 100}%`, width: `${slot.w / canvas.w * 100}%`, height: `${slot.h / canvas.h * 100}%`, animationDelay: `${index * 0.8}s` }}>
-            {photo && <img src={photo.dataUrl} alt={`Foto ${index + 1}`} />}
-          </div>
-        }) : photos.map((photo) => <img key={photo.slot_index} src={photo.dataUrl} alt={`Foto ${photo.slot_index + 1}`} className="output-grid-photo" />)}
-        <div className="output-caption">{customText || frame?.name || 'Chamera · 2026'}</div>
-      </div>
+      {variant === 'gif' ? (
+        <GifPreview photos={photos} />
+      ) : frame ? (
+        <FrameComposite
+          frame={frame}
+          customText={customText}
+          renderSlot={(shotIndex) => {
+            const photo = photoAt(shotIndex)
+            if (!photo) return null
+            if (variant === 'live' && photo.clipDataUrl) {
+              return <video src={photo.clipDataUrl} poster={photo.dataUrl} autoPlay muted loop playsInline />
+            }
+            return <img src={photo.dataUrl} alt={`Foto ${shotIndex + 1}`} />
+          }}
+        />
+      ) : null}
     </section>
+  )
+}
+
+function GifPreview({ photos }: { photos: CapturedPhoto[] }) {
+  const [index, setIndex] = useState(0)
+  const [aspect, setAspect] = useState('9/16')
+
+  useEffect(() => {
+    if (photos.length < 2) return
+    const timer = setInterval(() => setIndex((current) => (current + 1) % photos.length), GIF_FRAME_MS)
+    return () => clearInterval(timer)
+  }, [photos.length])
+
+  const photo = photos[index % Math.max(1, photos.length)]
+  return (
+    <div className="gif-preview" style={{ aspectRatio: aspect }}>
+      {photo && (
+        <img
+          src={photo.dataUrl}
+          alt={`Foto ${photo.slot_index + 1}`}
+          // GIF mengikuti rasio foto kamera (foto pertama)
+          onLoad={(event) => {
+            const { naturalWidth, naturalHeight } = event.currentTarget
+            if (index === 0 && naturalWidth && naturalHeight) setAspect(`${naturalWidth}/${naturalHeight}`)
+          }}
+        />
+      )}
+    </div>
   )
 }
 

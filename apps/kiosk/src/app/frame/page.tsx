@@ -4,6 +4,8 @@ import { Suspense } from 'react'
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useKioskStore, type Frame } from '../../stores/kioskStore'
+import { FrameComposite } from '../../components/FrameComposite'
+import { shotNumbers } from '../../lib/frame-layout'
 
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
@@ -151,7 +153,7 @@ function FrameSelectContent() {
           <button onClick={() => setSelectedFrameId(selectedFrame.id)} className="frame-choice w-[min(54vw,430px)]" aria-label={`Pilih ${selectedFrame.name}`}>
             <FrameArtwork frame={selectedFrame} />
             <span className="mt-3 block text-xl font-extrabold text-cream">{selectedFrame.name}</span>
-            <span className="mt-1 block text-cream/80">{selectedFrame.layout?.slots?.length || 0} foto{selectedFrame.extra_price > 0 ? ` · +Rp ${selectedFrame.extra_price.toLocaleString('id-ID')}` : ''}</span>
+            <span className="mt-1 block text-cream/80">{shotNumbers(selectedFrame.layout?.slots || []).length} foto{selectedFrame.extra_price > 0 ? ` · +Rp ${selectedFrame.extra_price.toLocaleString('id-ID')}` : ''}</span>
           </button>
           <button aria-label="Frame berikutnya" disabled={frames.length < 2} onClick={() => setSelectedFrameId(frames[(selectedIndex + 1) % frames.length].id)} className="carousel-arrow hidden md:flex">›</button>
           {frames.length > 1 && <div className="absolute bottom-5 flex gap-3 md:hidden">{frames.map((frame) => <button key={frame.id} aria-label={`Lihat ${frame.name}`} onClick={() => setSelectedFrameId(frame.id)} className={`h-3 w-3 min-h-0 rounded-full p-0 ${frame.id === selectedFrameId ? 'bg-cream' : 'bg-cream/40'}`} />)}</div>}
@@ -170,17 +172,11 @@ function formatTimer(seconds: number) {
 }
 
 function FrameArtwork({ frame }: { frame: Frame }) {
-  const canvas = frame.layout?.canvas || { w: frame.canvas_w, h: frame.canvas_h }
-  const slots = frame.layout?.slots || []
-
+  // frame asli yang diunggah admin, slot diisi foto contoh
   return (
-    <div className="frame-artwork" style={{ aspectRatio: `${canvas.w}/${canvas.h}` }}>
-      {slots.map((slot, index) => (
-        <div key={`${slot.n}-${index}`} className="frame-artwork-slot" style={{ left: `${slot.x / canvas.w * 100}%`, top: `${slot.y / canvas.h * 100}%`, width: `${slot.w / canvas.w * 100}%`, height: `${slot.h / canvas.h * 100}%` }}>
-          <img src={`/examples/example${index % 3 + 1}.jpg`} alt="" />
-        </div>
-      ))}
-      <div className="frame-artwork-caption">{frame.name}</div>
-    </div>
+    <FrameComposite
+      frame={frame}
+      renderSlot={(shotIndex) => <img src={`/examples/example${shotIndex % 3 + 1}.jpg`} alt="" />}
+    />
   )
 }

@@ -11,6 +11,8 @@ export interface Frame {
     text_area?: { x: number; y: number; w: number; h: number }
   }
   extra_price: number
+  /** PNG frame (slot transparan) dari booth-api, mis. /api/frames/<id>/image */
+  image_url?: string
 }
 
 export interface Session {

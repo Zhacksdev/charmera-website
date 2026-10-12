@@ -3,7 +3,8 @@ import { join } from 'path'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import type { Layout, Slot } from '@chamera/shared'
-import { photoForSlot } from './slot-photo.js'
+import { photoForSlot, slotsForShot } from './slot-photo.js'
+import { textOverlay, type TextStyle } from './text-overlay.js'
 
 const OUTPUTS_DIR = process.env.DATA_DIR 
   ? join(process.env.DATA_DIR, 'outputs') 
@@ -15,11 +16,7 @@ export interface RenderStripOptions {
   frameKeyedPath: string
   layout: Layout
   customText?: string
-  textStyle?: {
-    font?: string
-    fontSize?: number
-    color?: string
-  }
+  textStyle?: TextStyle
 }
 
 export async function ensureOutputsDir() {
@@ -34,7 +31,7 @@ export async function renderStrip(options: RenderStripOptions): Promise<string> 
   await ensureOutputsDir()
   
   const { canvas, slots, text_area } = layout
-  
+
   const base = sharp({
     create: {
       width: canvas.w,
@@ -43,55 +40,32 @@ export async function renderStrip(options: RenderStripOptions): Promise<string> 
       background: '#FFFFFF'
     }
   })
-  
+
   const composites: sharp.OverlayOptions[] = []
-  
+
   const sortedPhotos = [...photos].sort((a, b) => a.slot_index - b.slot_index)
-  
+
   for (const photo of sortedPhotos) {
-    const slot = slots.find(s => s.n === photo.slot_index + 1)
-    if (!slot) continue
-    
-    composites.push(await photoForSlot(photo.path, slot, canvas))
+    for (const slot of slotsForShot(slots, photo.slot_index)) {
+      composites.push(await photoForSlot(photo.path, slot, canvas))
+    }
   }
-  
+
   const frameKeyedBuffer = await readFile(frameKeyedPath)
   composites.push({
     input: frameKeyedBuffer,
     left: 0,
     top: 0
   })
-  
-  let result = base.composite(composites)
-  
-  if (customText && text_area) {
-    const { font = 'Nunito', fontSize = 32, color = '#26211F' } = textStyle || {}
-    
-    const textSvg = `
-      <svg width="${text_area.w}" height="${text_area.h}">
-        <text
-          x="${text_area.w / 2}"
-          y="${text_area.h / 2}"
-          font-family="${font}"
-          font-size="${fontSize}"
-          fill="${color}"
-          text-anchor="middle"
-          dominant-baseline="middle"
-        >${escapeXml(customText)}</text>
-      </svg>
-    `
-    
-    const textBuffer = Buffer.from(textSvg)
-    result = result.composite([{
-      input: textBuffer,
-      left: text_area.x,
-      top: text_area.y
-    }])
-  }
-  
+
+  // satu kali composite: panggilan composite() berikutnya menggantikan, bukan menambah layer
+  const text = textOverlay(customText, text_area, textStyle)
+  if (text) composites.push(text)
+
   const outputPath = join(OUTPUTS_DIR, `${sessionId}_strip.jpg`)
-  
-  await result
+
+  await base
+    .composite(composites)
     .jpeg({
       quality: 95,
       mozjpeg: true
@@ -99,15 +73,6 @@ export async function renderStrip(options: RenderStripOptions): Promise<string> 
     .toFile(outputPath)
   
   return outputPath
-}
-
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
 }
 
 export async function renderTestStrip(): Promise<Buffer> {

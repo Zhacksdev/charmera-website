@@ -228,7 +228,7 @@ export function startSyncWorker() {
   logger.info('Sync worker started')
 }
 
-export function queueSession(session: any) {
+export function queueSession(session: any, priority: number = 10) {
   addToOutbox('session', session.id, 'insert', {
     id: session.id,
     public_code: session.public_code,
@@ -242,7 +242,7 @@ export function queueSession(session: any) {
     price: session.price,
     started_at: session.started_at,
     completed_at: session.completed_at
-  }, 10)
+  }, priority)
 }
 
 export function queueOutput(sessionId: string, type: string, path: string) {

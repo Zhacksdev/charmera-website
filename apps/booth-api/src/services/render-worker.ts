@@ -6,6 +6,7 @@ import { renderGif } from './render-gif.js'
 import { renderLivePhoto } from './render-live.js'
 import { completeSessionIfDone } from './session-flow.js'
 import { getConfig } from './config.js'
+import { queueOutput } from './sync-worker.js'
 import type { Layout } from '@chamera/shared'
 
 export interface RenderJob {
@@ -58,6 +59,9 @@ async function processNextRenderJob() {
       `).run(uuidv4(), job.session_id, job.type, outputPath, new Date().toISOString())
       
       logger.info({ job_id: job.id, type: job.type }, 'Render job completed')
+
+      // unggah ke cloud segera (strip dulu) — halaman download menampilkan file satu per satu
+      queueOutput(job.session_id, job.type, outputPath)
       
     } catch (err: any) {
       logger.error({ err, job_id: job.id }, 'Render job failed')
@@ -130,8 +134,6 @@ async function processRenderJob(job: any): Promise<string> {
       return await renderGif({
         sessionId: job.session_id,
         photos: photos.map(p => ({ slot_index: p.slot_index, path: p.path })),
-        framePath: frameKeyedPath,
-        layout,
         frameDurationMs: gifConfig.frame_duration_ms,
         maxWidth: gifConfig.max_width
       })
@@ -146,15 +148,21 @@ async function processRenderJob(job: any): Promise<string> {
         throw new Error('No clips found')
       }
       
+      const config = getConfig() as any
+      const liveConfig = config?.live_config || {}
       const result = await renderLivePhoto({
         sessionId: job.session_id,
-        clips: clips.map(c => ({ 
-          slot_index: c.slot_index, 
-          path: c.path, 
-          duration_ms: c.duration_ms 
+        clips: clips.map(c => ({
+          slot_index: c.slot_index,
+          path: c.path,
+          duration_ms: c.duration_ms
         })),
         framePath: frameKeyedPath,
-        layout
+        layout,
+        customText: session.custom_text,
+        durationSec: liveConfig.clip_sec || config?.timers?.countdown || 5,
+        codec: liveConfig.codec,
+        previewH264: liveConfig.preview_h264
       })
       
       return job.type === 'live_h265' ? result.h265 : (result.h264 || result.h265)

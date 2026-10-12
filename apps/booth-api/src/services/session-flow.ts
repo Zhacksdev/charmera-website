@@ -3,7 +3,7 @@ import { db } from '../db/index.js'
 import { logger } from './logger.js'
 import { getConfig } from './config.js'
 import { getPrinterSettings } from './printer.js'
-import { queueSession, queueOutput } from './sync-worker.js'
+import { queueSession } from './sync-worker.js'
 
 // Alur status sesi (server = sumber kebenaran, kiosk mengikuti):
 //   created --pilih frame/timeout--> frame_selected (tahap Action)
@@ -105,6 +105,8 @@ export function finalizeSession(sessionId: string, requestPrint: boolean): Final
   const result = run()
   if (!result.already_finalized) {
     logger.info({ session_id: sessionId, render_jobs: result.render_jobs, print: result.print_requested }, 'Session finalized')
+    // sesi masuk cloud sejak awal: QR langsung bisa dibuka, file menyusul tiap kali render selesai
+    queueSession(db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId))
   }
   return result
 }
@@ -131,12 +133,9 @@ export function completeSessionIfDone(sessionId: string): void {
 
   logger.info({ session_id: sessionId, status, outputs: outputs.map((o) => o.type) }, 'Session closed')
 
-  if (status === 'completed') {
-    queueSession({ ...session, status, completed_at: now })
-    for (const o of outputs) {
-      queueOutput(sessionId, o.type, o.path)
-    }
-  }
+  // output sudah diantre render worker satu per satu; status akhir dikirim paling akhir (prioritas
+  // rendah) agar halaman download berhenti menunggu hanya setelah semua file terunggah
+  queueSession({ ...session, status, completed_at: now }, 1)
 }
 
 /** Tindakan saat stage_expires_at lewat. Dipakai GET sesi (kiosk polling) dan job cleanup. */

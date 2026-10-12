@@ -36,7 +36,12 @@ export async function presignPut(key: string, contentType: string, expiresSec = 
 }
 
 // URL GET berbatas waktu untuk download publik (halaman download & frame assets)
-export async function presignGet(key: string, expiresSec = 3600): Promise<string> {
-  const cmd = new GetObjectCommand({ Bucket: bucket, Key: key })
+/** downloadName diisi = browser langsung mengunduh (Content-Disposition: attachment), bukan membuka file */
+export async function presignGet(key: string, expiresSec = 3600, downloadName?: string): Promise<string> {
+  const cmd = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ...(downloadName ? { ResponseContentDisposition: `attachment; filename="${downloadName}"` } : {})
+  })
   return getSignedUrl(getS3(), cmd, { expiresIn: expiresSec })
 }

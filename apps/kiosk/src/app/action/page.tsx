@@ -5,6 +5,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useKioskStore } from '../../stores/kioskStore'
 import { useCamera, useClipRecorder, useStageTimer } from '../../hooks'
+import { FrameComposite } from '../../components/FrameComposite'
+import { shotNumbers } from '../../lib/frame-layout'
 
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
@@ -40,7 +42,8 @@ function ActionContent() {
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const slots = selectedFrame?.layout?.slots || []
-  const totalSlots = slots.length
+  // slot bernomor sama berbagi satu foto — jumlah jepretan = nomor slot unik
+  const totalSlots = shotNumbers(slots).length
   const maxRetake = timerSnapshot?.max_retake || 3
 
   useEffect(() => {
@@ -250,15 +253,15 @@ function ActionContent() {
       
       <div className="grid flex-1 grid-cols-1 items-center gap-6 py-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)] lg:gap-12">
         <div className="mx-auto w-full max-w-[min(42vh,340px)] lg:max-w-[440px]">
-          {selectedFrame && <div className="action-frame" style={{ aspectRatio: `${selectedFrame.layout.canvas.w}/${selectedFrame.layout.canvas.h}` }}>
-            {slots.map((slot, index) => {
-              const photo = photos.get(index)
-              return <div key={`${slot.n}-${index}`} className="action-frame-slot" style={{ left: `${slot.x / selectedFrame.layout.canvas.w * 100}%`, top: `${slot.y / selectedFrame.layout.canvas.h * 100}%`, width: `${slot.w / selectedFrame.layout.canvas.w * 100}%`, height: `${slot.h / selectedFrame.layout.canvas.h * 100}%` }}>
-                {photo ? <img src={photo.dataUrl} alt={`Foto slot ${index + 1}`} /> : <span>Foto {index + 1}</span>}
-              </div>
-            })}
-            <div className="action-frame-caption">{customText || selectedFrame.name}</div>
-          </div>}
+          {selectedFrame && <FrameComposite
+            frame={selectedFrame}
+            customText={customText}
+            renderSlot={(shotIndex) => {
+              const photo = photos.get(shotIndex)
+              if (photo) return <img src={photo.dataUrl} alt={`Foto ${shotIndex + 1}`} />
+              return <span className={`flex h-full w-full items-center justify-center ${shotIndex === currentSlot ? 'frame-composite-current' : ''}`}>Foto {shotIndex + 1}</span>
+            }}
+          />}
         </div>
         <div className="relative mx-auto aspect-[4/3] w-full max-w-2xl overflow-hidden rounded-[24px] border-4 border-cream bg-char shadow-xl">
           <video
