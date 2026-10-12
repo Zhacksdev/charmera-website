@@ -1,0 +1,41 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "cloud-api": {
+      "root": "apps/cloud-api",
+      "framework": "express",
+      "entrypoint": "dist/server.js",
+      "installCommand": "cd ../.. && pnpm install --frozen-lockfile --prod=false",
+      "buildCommand": "cd ../.. && pnpm --filter @chamera/cloud-api... run build"
+    },
+    "download": {
+      "root": "apps/download",
+      "framework": "nextjs",
+      "installCommand": "cd ../.. && pnpm install --frozen-lockfile --prod=false",
+      "buildCommand": "cd ../.. && pnpm --filter @chamera/download... run build",
+      "outputDirectory": ".next"
+    },
+    "admin": {
+      "root": "apps/admin",
+      "framework": "nextjs",
+      "installCommand": "cd ../.. && pnpm install --frozen-lockfile --prod=false",
+      "buildCommand": "cd ../.. && pnpm --filter @chamera/admin... run build",
+      "outputDirectory": ".next"
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" }
+      ]
+    }
+  ],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": { "service": "cloud-api" } },
+    { "source": "/download", "destination": { "service": "download" } },
+    { "source": "/download/(.*)", "destination": { "service": "download" } },
+    { "source": "/(.*)", "destination": { "service": "admin" } }
+  ]
+}

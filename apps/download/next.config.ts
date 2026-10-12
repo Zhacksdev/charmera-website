@@ -2,7 +2,8 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  output: 'standalone',
+  // Satu domain dengan admin (Vercel Services): aset /_next harus di bawah /download agar tidak terarah ke admin
+  basePath: '/download',
   images: {
     unoptimized: true
   }

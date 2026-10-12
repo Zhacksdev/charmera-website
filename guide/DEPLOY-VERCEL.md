@@ -8,13 +8,15 @@ Satu project Vercel (`charmera-website-prod`, framework **Services**, Node 24) d
 
 | Path | Service | Root | Isi |
 |---|---|---|---|
-| `/api/*`, `/health` | `cloud-api` | `apps/cloud-api` | Express: Public API, Device API (booth), Admin API |
-| `/download/*` | `download` | `apps/download` | Halaman QR download untuk tamu |
+| `/api/*` | `cloud-api` | `apps/cloud-api` | Express: Public API, Device API (booth), Admin API |
+| `/download/*` | `download` | `apps/download` | Halaman QR download untuk tamu (`basePath: '/download'`) |
 | semua path lain | `admin` | `apps/admin` | Dashboard admin |
 
-Build command tiap service menjalankan `pnpm install` untuk **seluruh workspace**, termasuk paket booth (`better-sqlite3`, `sharp`, `pdf-to-printer`), lalu mem-build service tersebut.
+Install command tiap service menjalankan `pnpm install` untuk **seluruh workspace**, termasuk paket booth (`better-sqlite3`, `sharp`, `pdf-to-printer`), lalu build command mem-build service tersebut beserta paket workspace yang dipakainya.
 
-> Konfigurasi Services (root, build command, routing) **tidak tersimpan di repo**: tidak ada `vercel.json`. Nilai di atas diambil dari hasil `vercel build` terakhir (`.vercel/output/config.json`). Catat atau screenshot pengaturan di dashboard Vercel sebelum mengubahnya.
+> Konfigurasi Services (root, build command, routing) tersimpan di **`vercel.json`** di root repo. Di dashboard Vercel, Settings → Build and Deployment: **Framework Preset = Services**, **Root Directory kosong**, dan biarkan Build Command / Output Directory tanpa override. Kalau Framework Preset bukan Services, Vercel menjalankan `turbo build` di root lalu gagal dengan `No Output Directory named "public"`.
+>
+> Download app memakai `basePath: '/download'` supaya aset `/_next/*`-nya tidak tertimpa oleh admin (keduanya Next.js di domain yang sama).
 
 ---
 
