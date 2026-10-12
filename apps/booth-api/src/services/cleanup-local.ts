@@ -7,11 +7,28 @@ const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
 const LOCAL_RETENTION_DAYS = 7
 const MIN_DISK_GB = 5
 
+// Hanya sesi yang benar-benar selesai: status akhir, tidak ada render aktif, dan tidak ada item outbox
+// yang belum terkirim. sync_status bisa 'synced' saat strip terunggah sementara GIF/Live masih dirender.
+const FINISHED_SESSION = `
+  s.sync_status = 'synced'
+  AND s.completed_at IS NOT NULL
+  AND s.status IN ('completed', 'failed', 'abandoned')
+  AND NOT EXISTS (
+    SELECT 1 FROM render_jobs r WHERE r.session_id = s.id AND r.status IN ('pending', 'rendering')
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM outbox o
+    WHERE o.status != 'synced'
+      AND ((o.entity = 'session' AND o.entity_id = s.id)
+        OR (o.entity = 'output' AND json_extract(o.payload, '$.session_id') = s.id))
+  )
+`
+
 export async function cleanupLocalFiles() {
   try {
     const syncedSessions = db.prepare(`
-      SELECT id, completed_at FROM sessions 
-      WHERE sync_status = 'synced' AND completed_at IS NOT NULL
+      SELECT s.id, s.completed_at FROM sessions s
+      WHERE ${FINISHED_SESSION}
     `).all() as any[]
     
     const now = Date.now()
@@ -80,10 +97,12 @@ async function checkDiskSpace() {
     if (freeGB < MIN_DISK_GB) {
       logger.warn({ free_gb: freeGB.toFixed(2) }, 'Low disk space')
       
+      // sesi yang sedang berjalan/diproses tidak pernah ikut terhapus (completed_at NULL terurut paling awal)
       const oldestSynced = db.prepare(`
-        SELECT id FROM sessions 
-        WHERE sync_status = 'synced'
-        ORDER BY completed_at ASC
+        SELECT s.id FROM sessions s
+        WHERE ${FINISHED_SESSION}
+          AND EXISTS (SELECT 1 FROM photos p WHERE p.session_id = s.id)
+        ORDER BY s.completed_at ASC
         LIMIT 10
       `).all() as any[]
       
