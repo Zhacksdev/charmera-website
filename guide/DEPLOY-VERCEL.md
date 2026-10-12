@@ -151,9 +151,15 @@ Gunakan `/api/health`, bukan `/health`, untuk mengecek cloud-api: dashboard admi
 
 ## Status per 12 Oktober 2026
 
-Hasil cek terhadap URL yang tercatat di `.env` booth:
+Domain produksi project `charmera-website-prod` adalah **`https://charmera-website-md8a-rouge.vercel.app`** (`charmera-website-prod.vercel.app` bukan milik project ini). Hasil cek setelah deploy `vercel.json` Services:
 
-- `https://charmera-website-md8a-rouge.vercel.app` hanya menyajikan **admin**: `/login` 200, tetapi `/api/health`, `/api/public/...`, `/api/device/...`, dan `/download/...` mengembalikan `NOT_FOUND` dari Vercel. Cloud-api dan halaman download belum aktif di sana, sehingga sync booth dan link QR akan gagal.
-- `https://charmera-website-prod.vercel.app` mengembalikan `DEPLOYMENT_NOT_FOUND`.
+- `/api/health` 200 JSON, `/api/public/...` JSON 404 dari Express, `/api/device/config` 401 tanpa key: **cloud-api aktif**.
+- `/download/<kode>` 200 dan aset `/download/_next/*` 200; `/login` 200.
 
-Sebelum event, deploy ulang sampai semua baris di bagian 6 lolos, lalu perbarui `DEVICE_API_URL` dan `PUBLIC_BASE_URL` di laptop booth. Selama cloud belum siap, kosongkan `DEVICE_API_URL` supaya booth berjalan offline: sesi, render, dan cetak tetap jalan, lalu antrean sync terkirim begitu URL diisi.
+Yang masih perlu: rotate kunci (bagian 0), isi env Vercel (bagian 2), lalu `DEVICE_KEY` booth (bagian 4). Selama `DEVICE_KEY` kosong, booth mendapat 401 dari Device API; kosongkan `DEVICE_API_URL` bila ingin booth benar-benar offline.
+
+### Catatan build cloud-api
+
+`buildCommand` cloud-api sengaja hanya mem-build paket dependency (`@chamera/cloud-api^...`) lalu menghapus `apps/cloud-api/dist`. Bila `dist` ada, builder `@vercel/backends` memakai isinya sebagai function di root `/var/task`, sementara `node_modules` hasil tracing tetap di path relatif repo, sehingga runtime gagal dengan `Cannot find module 'express'`. Tanpa `dist`, builder membundel `src/server.ts` sendiri dengan path yang konsisten.
+
+Tombol **Redeploy** di dashboard membangun ulang commit yang sama dengan deployment asalnya. Untuk memakai commit terbaru, push ke `main` atau buat deployment baru dari branch `main`.
