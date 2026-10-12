@@ -20,7 +20,7 @@ function FrameSelectContent() {
   
   const { frames, setFrames, selectFrame, setSession } = useKioskStore()
   const [loading, setLoading] = useState(true)
-  const [remainingSec, setRemainingSec] = useState(30)
+  const [remainingSec, setRemainingSec] = useState(60)
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null)
   const selectedIndex = Math.max(0, frames.findIndex((frame) => frame.id === selectedFrameId))
   const selectedFrame = frames[selectedIndex]

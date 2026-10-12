@@ -82,6 +82,9 @@ export async function checkCamera(): Promise<PreflightResult['camera']> {
   }
 }
 
+const DISK_BLOCK_GB = 1
+const DISK_WARN_GB = 5
+
 export async function checkDisk(): Promise<PreflightResult['disk']> {
   // cek disk fisik via booth-api (statfs) — navigator.storage.estimate()
   // hanya menunjukkan kuota origin browser, bukan disk sebenarnya
@@ -101,15 +104,16 @@ export async function checkDisk(): Promise<PreflightResult['disk']> {
     const data = await res.json()
     const freeGB: number = typeof data.disk_free_gb === 'number' ? data.disk_free_gb : 0
 
-    if (freeGB > 0 && freeGB < 5) {
+    // satu sesi hanya ±10–20 MB: blokir Start hanya bila disk benar-benar tidak muat
+    if (freeGB > 0 && freeGB < DISK_BLOCK_GB) {
       return {
         status: 'error',
-        message: `Disk hampir penuh: ${freeGB.toFixed(1)} GB tersisa`,
+        message: `Disk penuh: ${freeGB.toFixed(1)} GB tersisa — kosongkan disk laptop dulu`,
         freeGB
       }
     }
 
-    if (freeGB > 0 && freeGB < 10) {
+    if (freeGB > 0 && freeGB < DISK_WARN_GB) {
       return {
         status: 'warning',
         message: `Disk menipis: ${freeGB.toFixed(1)} GB tersisa`,

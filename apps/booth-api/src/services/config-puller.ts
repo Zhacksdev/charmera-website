@@ -90,9 +90,9 @@ export async function pullConfig(): Promise<{ config: Config | null; frames: Fra
       media_warn_at: data.media_warn_at || 10,
       base_price: data.base_price || 0,
       timers: data.timers || {
-        frame: 30,
-        action: 120,
-        preview: 45,
+        frame: 60,
+        action: 420,
+        preview: 120,
         qr: 15,
         closing: 5,
         countdown: 5,

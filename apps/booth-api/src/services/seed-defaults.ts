@@ -56,7 +56,7 @@ export async function seedDefaults(): Promise<void> {
     base_price: 25000,
     retention_days: 30,
     timers: {
-      frame: 30, action: 120, preview: 45, qr: 15, closing: 5,
+      frame: 60, action: 420, preview: 120, qr: 15, closing: 5,
       reminder_sec: 15, max_retake: 3, countdown: 5
     },
     camera: { width: 1920, height: 1080, mirror_preview: true },

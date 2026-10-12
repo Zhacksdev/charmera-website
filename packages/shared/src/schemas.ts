@@ -27,9 +27,9 @@ export const layoutSchema = z.object({
 })
 
 export const timersSchema = z.object({
-  frame: z.number().int().positive().default(30),
-  action: z.number().int().positive().default(120),
-  preview: z.number().int().positive().default(45),
+  frame: z.number().int().positive().default(60),
+  action: z.number().int().positive().default(420),
+  preview: z.number().int().positive().default(120),
   qr: z.number().int().positive().default(15),
   closing: z.number().int().positive().default(5),
   reminder_sec: z.number().int().positive().default(15),

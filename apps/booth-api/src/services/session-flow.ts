@@ -24,9 +24,9 @@ function expiresIn(sec: number): string {
 export function stageSeconds(stage: 'frame' | 'action' | 'preview' | 'processing'): number {
   const t = timers()
   switch (stage) {
-    case 'frame': return t.frame || 30
-    case 'action': return t.action || 120
-    case 'preview': return t.preview || 45
+    case 'frame': return t.frame || 60
+    case 'action': return t.action || 420
+    case 'preview': return t.preview || 120
     // batas aman render; diperpanjang selama job masih berjalan
     case 'processing': return 120
   }
