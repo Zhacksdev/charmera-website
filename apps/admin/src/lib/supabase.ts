@@ -1,4 +1,5 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { SupabaseClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -13,7 +14,8 @@ let client: SupabaseClient | null = null
 
 function getClient(): SupabaseClient {
   if (!client) {
-    client = createClient(supabaseUrl, supabaseAnonKey)
+    // Sesi disimpan di cookie (bukan localStorage) agar middleware.ts bisa membacanya
+    client = createBrowserClient(supabaseUrl, supabaseAnonKey)
   }
   return client
 }
