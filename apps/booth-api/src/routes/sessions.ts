@@ -5,7 +5,7 @@ import { db } from '../db/index.js'
 import { logger } from '../services/logger.js'
 import { createSessionInputSchema } from '@chamera/shared'
 import { getConfig } from '../services/config.js'
-import { getStageExpiration, getRemainingTime, checkSessionExpiry, advanceSession } from '../services/session-timer.js'
+import { getRemainingTime, checkSessionExpiry, selectFrame, startPreview, finalizeSession, stageSeconds } from '../services/session-flow.js'
 
 const router = Router()
 
@@ -21,7 +21,7 @@ router.post('/', (req, res) => {
     const id = uuidv4()
     const publicCode = nanoid(12)
     const now = new Date().toISOString()
-    const stageExpiresAt = getStageExpiration('created', config)
+    const stageExpiresAt = new Date(Date.now() + stageSeconds('frame') * 1000)
     
     db.prepare(`
       INSERT INTO sessions (
@@ -97,15 +97,12 @@ router.patch('/:id/frame', (req, res) => {
       return res.status(404).json({ error: 'Session not found' })
     }
 
-    const config = getConfig()
-    const actionTimer = config?.timers?.action || 120
-    const stageExpiresAt = new Date(Date.now() + actionTimer * 1000).toISOString()
+    if (!['created', 'frame_selected'].includes(session.status)) {
+      return res.status(409).json({ error: `Frame tidak bisa diganti pada status ${session.status}` })
+    }
 
-    db.prepare(`
-      UPDATE sessions
-      SET frame_id = ?, frame_selected_by = ?, status = 'frame_selected', stage_expires_at = ?
-      WHERE id = ?
-    `).run(frame_id, selected_by, stageExpiresAt, id)
+    const stageExpiresAt = selectFrame(id, frame_id, selected_by)
+    const actionTimer = stageSeconds('action')
 
     logger.info({ session_id: id, frame_id, selected_by }, 'Frame selected')
 
@@ -152,16 +149,25 @@ router.post('/:id/reset', (req, res) => {
   }
 })
 
+// Maju ke tahap berikutnya atas permintaan kiosk. `from` mencegah lompatan ganda
+// bila server sudah memajukan sesi lebih dulu (mis. karena timeout).
 router.post('/:id/advance', (req, res) => {
   try {
     const { id } = req.params
+    const from = typeof req.body?.from === 'string' ? req.body.from : null
     const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(id)
     
     if (!session) {
       return res.status(404).json({ error: 'Session not found' })
     }
     
-    advanceSession(id)
+    if (!from || from === session.status) {
+      if (session.status === 'frame_selected' || session.status === 'capturing') {
+        startPreview(id)
+      } else if (session.status === 'previewing') {
+        finalizeSession(id, req.body?.print === true)
+      }
+    }
     
     const updated = db.prepare('SELECT * FROM sessions WHERE id = ?').get(id)
     

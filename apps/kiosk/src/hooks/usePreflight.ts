@@ -71,13 +71,14 @@ export function usePreflight(options: UsePreflightOptions = {}) {
   const hasWarning = result && (
     result.camera.status === 'warning' ||
     result.disk.status === 'warning' ||
-    result.config.status === 'warning'
+    result.config.status === 'warning' ||
+    (!!result.printer && result.printer.status !== 'ok')
   )
 
   const canStart = result &&
     result.camera.status !== 'error' &&
     result.disk.status !== 'error' &&
-    result.config.status === 'ok' &&
+    result.config.status !== 'error' &&
     result.config.hasFrames
 
   return {

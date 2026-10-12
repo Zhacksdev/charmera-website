@@ -25,7 +25,7 @@ function ActionContent() {
     mirror: true
   })
   
-  const { isRecording, startRecording, getClipDataUrl } = useClipRecorder()
+  const { isRecording, startRecording, getClipBlob } = useClipRecorder()
   
   const [currentSlot, setCurrentSlot] = useState(0)
   const [countdown, setCountdown] = useState(0)
@@ -33,6 +33,8 @@ function ActionContent() {
   const [retakeCount, setRetakeCount] = useState(0)
   const [showReminder, setShowReminder] = useState(false)
   const [timerSnapshot, setTimerSnapshot] = useState<any>(null)
+  const [outputMode, setOutputMode] = useState<'photo_only' | 'full'>('photo_only')
+  const [captureError, setCaptureError] = useState('')
   
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -46,16 +48,25 @@ function ActionContent() {
     return () => stopCamera()
   }, [startCamera, stopCamera])
 
+  useEffect(() => {
+    fetch(`${BOOTH_API}/api/status`)
+      .then(async (res) => {
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.output_mode === 'full') setOutputMode('full')
+      })
+      .catch((err) => console.error('Failed to load output mode:', err))
+  }, [])
+
   const { remainingSec, isExpired } = useStageTimer({
     sessionId,
-    onComplete: () => {
-      if (photos.size >= totalSlots) {
-        router.push(`/preview?session=${sessionId}`)
+    activeStatuses: ['frame_selected', 'capturing'],
+    // timer Action habis: server memindahkan sesi ke Preview bila ada foto, atau abandoned bila kosong
+    onComplete: (status) => {
+      if (status === 'abandoned' || status === 'failed') {
+        router.push('/')
       } else {
-        const lastPhoto = Array.from(photos.values()).pop()
-        if (lastPhoto) {
-          router.push(`/preview?session=${sessionId}`)
-        }
+        router.push(`/preview?session=${sessionId}`)
       }
     }
   })
@@ -93,10 +104,15 @@ function ActionContent() {
     if (slotIndex >= totalSlots) return
     
     setIsCapturing(true)
+    setCaptureError('')
     
     try {
       const stream = videoRef.current?.srcObject as MediaStream
-      if (stream) {
+      // Chrome Android/desktop merekam WebM, Chrome/Safari iPad hanya MP4
+      const canRecordClip = outputMode === 'full'
+        && typeof MediaRecorder !== 'undefined'
+        && (MediaRecorder.isTypeSupported('video/webm') || MediaRecorder.isTypeSupported('video/mp4'))
+      if (stream && canRecordClip) {
         startRecording(stream)
       }
       
@@ -117,28 +133,31 @@ function ActionContent() {
       
       await new Promise(resolve => setTimeout(resolve, countdownSec * 1000))
       
-      const photoDataUrl = capturePhoto()
-      if (!photoDataUrl) throw new Error('Failed to capture photo')
+      const photoBlob = await capturePhoto()
+      if (!photoBlob) throw new Error('Failed to capture photo')
       
-      const clipDataUrl = await getClipDataUrl()
+      const clipBlob = canRecordClip ? await getClipBlob() : null
       
-      const photoBase64 = photoDataUrl.split(',')[1]
-      const clipBase64 = clipDataUrl ? clipDataUrl.split(',')[1] : undefined
+      const formData = new FormData()
+      formData.append('slot_index', slotIndex.toString())
+      formData.append('photo', photoBlob, `slot_${slotIndex}.jpg`)
+      if (clipBlob) formData.append('clip', clipBlob, `slot_${slotIndex}.${clipBlob.type.includes('mp4') ? 'mp4' : 'webm'}`)
       
-      await fetch(`${BOOTH_API}/api/sessions/${sessionId}/photos`, {
+      const uploadResponse = await fetch(`${BOOTH_API}/api/sessions/${sessionId}/photos`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          slot_index: slotIndex,
-          photo_data: photoBase64,
-          clip_data: clipBase64,
-        }),
+        body: formData,
       })
+      if (!uploadResponse.ok) {
+        throw new Error(`Unggahan foto gagal (HTTP ${uploadResponse.status})`)
+      }
+      
+      const photoDataUrl = URL.createObjectURL(photoBlob)
+      const clipDataUrl = clipBlob ? URL.createObjectURL(clipBlob) : undefined
       
       setPhoto(slotIndex, { 
         slot_index: slotIndex, 
         dataUrl: photoDataUrl, 
-        clipDataUrl: clipDataUrl ?? undefined
+        clipDataUrl: clipDataUrl
       })
       
       if (slotIndex >= currentSlot && slotIndex < totalSlots - 1) {
@@ -147,6 +166,7 @@ function ActionContent() {
       
     } catch (err) {
       console.error('Capture failed:', err)
+      setCaptureError('Foto belum terkirim. Periksa koneksi Wi-Fi, lalu coba ambil ulang.')
     } finally {
       setIsCapturing(false)
       setCountdown(0)
@@ -154,7 +174,7 @@ function ActionContent() {
         clearInterval(countdownIntervalRef.current)
       }
     }
-  }, [isReady, sessionId, isCapturing, currentSlot, totalSlots, startRecording, getClipDataUrl, capturePhoto, setPhoto, videoRef, timerSnapshot])
+  }, [isReady, sessionId, isCapturing, currentSlot, totalSlots, startRecording, getClipBlob, capturePhoto, setPhoto, videoRef, timerSnapshot, outputMode])
 
   const allSlotsFilled = photos.size >= totalSlots
 
@@ -165,8 +185,18 @@ function ActionContent() {
     await handleCapture(allSlotsFilled ? currentSlot : Math.max(0, currentSlot - 1))
   }, [retakeCount, maxRetake, isCapturing, handleCapture, allSlotsFilled, currentSlot])
 
-  const handleContinue = useCallback(() => {
+  const handleContinue = useCallback(async () => {
     if (!sessionId) return
+    try {
+      // server pindah ke tahap Preview dengan timer preview sendiri
+      await fetch(`${BOOTH_API}/api/sessions/${sessionId}/advance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: 'frame_selected' })
+      })
+    } catch (err) {
+      console.error('Failed to advance session:', err)
+    }
     router.push(`/preview?session=${sessionId}`)
   }, [sessionId, router])
 
@@ -279,6 +309,8 @@ function ActionContent() {
           </button>
         )}
       </div>
+
+      {captureError && <div role="alert" className="mx-auto mt-3 max-w-xl rounded-lg bg-cream px-4 py-3 text-center font-bold text-cherry">{captureError}</div>}
       
       <div className="mx-auto mt-4 w-full max-w-xl">
         <label htmlFor="custom-text" className="mb-2 block text-center text-xl font-extrabold text-cream">Custom textnya di sini ya!</label>

@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from 'next'
 import '../styles/globals.css'
+import { KioskRuntime } from '../components/KioskRuntime'
 
 export const metadata: Metadata = {
   title: 'Chamera - Photobooth',
   description: 'Wear your memories',
+  appleWebApp: { capable: true, title: 'Chamera', statusBarStyle: 'black-translucent' },
 }
 
 export const viewport: Viewport = {
@@ -22,6 +24,7 @@ export default function RootLayout({
   return (
     <html lang="id">
       <body className="kiosk-shell font-sans min-h-screen overflow-hidden">
+        <KioskRuntime />
         {children}
       </body>
     </html>

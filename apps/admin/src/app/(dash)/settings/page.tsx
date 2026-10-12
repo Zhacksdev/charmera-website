@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { adminFetch } from '../../../lib/supabase'
+import { adminFetch, adminSend, errorMessage } from '../../../lib/supabase'
 
 export default function SettingsPage() {
   const [retentionDays, setRetentionDays] = useState(30)
@@ -33,7 +33,7 @@ export default function SettingsPage() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await adminFetch('/api/admin/settings', {
+      await adminSend('/api/admin/settings', {
         method: 'PATCH',
         body: JSON.stringify({
           retention_days: retentionDays,
@@ -44,7 +44,7 @@ export default function SettingsPage() {
       alert('Settings saved')
     } catch (err) {
       console.error('Failed to save:', err)
-      alert('Failed to save')
+      alert(`Gagal menyimpan: ${errorMessage(err, 'unknown')}`)
     } finally {
       setSaving(false)
     }

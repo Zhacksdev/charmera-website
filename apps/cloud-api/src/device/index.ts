@@ -90,16 +90,27 @@ deviceRouter.post('/sessions', async (req, res) => {
       return res.status(400).json({ error: 'id dan public_code wajib' })
     }
 
+    // frame offline/seed booth tidak ada di cloud — FK sessions.frame_id akan menolak upsert
+    let frameId: string | null = null
+    if (s.frame_id) {
+      const { data: frame } = await supabase.from('frames').select('id').eq('id', s.frame_id).maybeSingle()
+      frameId = frame ? s.frame_id : null
+    }
+
+    // 'synced' hanya setelah file terunggah (/complete); jangan turunkan status yang sudah synced
+    const { data: existing } = await supabase.from('sessions').select('sync_status').eq('id', s.id).maybeSingle()
+
     const { error } = await supabase
       .from('sessions')
       .upsert({
         id: s.id,
         public_code: s.public_code,
-        booth_id: s.booth_id || boothId,
-        frame_id: s.frame_id,
+        // booth hanya boleh menulis sesi miliknya sendiri
+        booth_id: boothId,
+        frame_id: frameId,
         config_version: s.config_version,
         status: s.status,
-        sync_status: 'synced',
+        sync_status: existing?.sync_status === 'synced' ? 'synced' : 'syncing',
         frame_selected_by: s.frame_selected_by,
         custom_text: s.custom_text,
         price: s.price,
@@ -112,7 +123,7 @@ deviceRouter.post('/sessions', async (req, res) => {
       return res.status(500).json({ error: error.message })
     }
 
-    res.json({ status: 'synced' })
+    res.json({ status: 'received' })
   } catch (err: any) {
     res.status(503).json({ error: err.message })
   }
@@ -146,7 +157,14 @@ deviceRouter.post('/sessions/:id/complete', async (req, res) => {
   try {
     const supabase = getSupabase()
     const { id } = req.params
+    const boothId = (req as any).booth.id as string
     const outputs: Array<{ type: string; key: string }> = req.body?.outputs || []
+
+    const { data: owned } = await supabase.from('sessions').select('id').eq('id', id).eq('booth_id', boothId).maybeSingle()
+    if (!owned) {
+      // sesi belum ter-upsert (urutan outbox) — booth akan retry
+      return res.status(409).json({ error: 'Sesi belum tersinkron' })
+    }
 
     for (const o of outputs) {
       if (!o?.type || !o?.key) continue

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { adminFetch } from '../../../lib/supabase'
+import { adminFetch, adminSend, errorMessage } from '../../../lib/supabase'
 
 interface Frame {
   id: string
@@ -37,35 +37,51 @@ export default function FramesPage() {
   }
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+    const input = e.target
+    const file = input.files?.[0]
     if (!file) return
     
     setUploading(true)
     
     try {
-      const reader = new FileReader()
-      reader.onload = async () => {
-        const base64 = (reader.result as string).split(',')[1]
-        
-        const analyzeRes = await adminFetch('/api/admin/frames/analyze', {
-          method: 'POST',
-          body: JSON.stringify({ image: base64 })
-        })
-        
-        if (analyzeRes.ok) {
-          const analysis = await analyzeRes.json()
-          alert(`Frame analyzed! ${analysis.slots.length} slots detected`)
-          fetchFrames()
-        } else {
-          alert('Failed to analyze frame')
-        }
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve((reader.result as string).split(',')[1])
+        reader.onerror = () => reject(new Error('File tidak bisa dibaca'))
+        reader.readAsDataURL(file)
+      })
+
+      const analysis = await adminSend('/api/admin/frames/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ image: base64 })
+      })
+
+      if (!analysis.slots?.length) {
+        throw new Error('Tidak ada slot hijau terdeteksi di frame ini')
       }
-      reader.readAsDataURL(file)
+
+      // simpan frame: PNG keyed (slot transparan) diunggah ke storage lalu ditarik booth
+      await adminSend('/api/admin/frames', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: file.name.replace(/\.[^.]+$/, ''),
+          orientation: analysis.orientation,
+          canvas_w: analysis.canvas?.w,
+          canvas_h: analysis.canvas?.h,
+          layout: analysis.layout,
+          sort_order: frames.length,
+          image_base64: analysis.keyed_preview
+        })
+      })
+
+      alert(`Frame tersimpan: ${analysis.slots.length} slot terdeteksi`)
+      fetchFrames()
     } catch (err) {
       console.error('Upload failed:', err)
-      alert('Upload failed')
+      alert(`Upload gagal: ${errorMessage(err, 'unknown')}`)
     } finally {
       setUploading(false)
+      input.value = ''
     }
   }
 

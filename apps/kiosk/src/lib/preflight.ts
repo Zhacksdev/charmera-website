@@ -159,6 +159,14 @@ export async function checkConfig(): Promise<PreflightResult['config']> {
     const framesRes = await fetch(`${BOOTH_API}/api/frames`)
     const frames = await framesRes.json()
 
+    if (data.output_mode === 'full' && data.ffmpeg_ok === false) {
+      return {
+        status: 'warning',
+        message: 'ffmpeg tidak terpasang di laptop — GIF & Live Photo akan gagal (foto strip tetap jalan)',
+        hasFrames: Array.isArray(frames) && frames.length > 0
+      }
+    }
+
     if (!frames || frames.length === 0) {
       return {
         status: 'warning',
@@ -181,12 +189,28 @@ export async function checkConfig(): Promise<PreflightResult['config']> {
   }
 }
 
+// Printer tidak pernah memblokir Start: cetak gagal tetap menghasilkan QR
+export async function checkPrinter(): Promise<PreflightResult['printer']> {
+  const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
+
+  try {
+    const res = await fetch(`${BOOTH_API}/api/status`)
+    if (!res.ok) return undefined
+    const data = await res.json()
+    if (data.print_mode !== 'local' || !data.printer) return undefined
+    return { status: data.printer.status, message: data.printer.message }
+  } catch {
+    return undefined
+  }
+}
+
 export async function runPreflight(): Promise<PreflightResult> {
-  const [camera, disk, config] = await Promise.all([
+  const [camera, disk, config, printer] = await Promise.all([
     checkCamera(),
     checkDisk(),
-    checkConfig()
+    checkConfig(),
+    checkPrinter()
   ])
   
-  return { camera, disk, config }
+  return { camera, disk, config, printer }
 }

@@ -12,9 +12,11 @@ Karena booth berjalan lokal, Print module menjadi bagian dari Booth API di lapto
 
 Mode dan printer dipilih di dashboard admin, disinkronkan ke booth sebagai bagian dari config, dan berlaku mulai sesi berikutnya.
 
+Operator juga bisa memilih mode, printer, jumlah salinan, skala (`noscale` / `fit` / `shrink`), dan ukuran kertas langsung dari panel operator lokal (`/operator`). Pengaturan lokal ini disimpan di SQLite (`config_cache.printer_local`) dan **menang atas config cloud**, karena printer fisik adalah fakta laptop booth. Mode `custom_api` belum diimplementasikan dan diperlakukan sebagai `digital_only`. Panduan setup: `RUNNING-TABLET.md`.
+
 ## Print module
 
-- Modul Node.js di Booth API memakai `pdf-to-printer` (Windows) atau `lp`/CUPS (macOS/Linux), mendukung printer USB maupun jaringan/wireless selama terdaftar di OS. Nama printer default diatur di dashboard dan tiba lewat config.
+- Modul Node.js di Booth API (`services/printer.ts`) membungkus strip menjadi PDF satu halaman berukuran fisik 4x6 inci (300 DPI), lalu mencetaknya lewat `pdf-to-printer`/SumatraPDF (Windows, senyap tanpa dialog) atau `lp`/CUPS (macOS/Linux). Printer apa pun yang terdaftar di OS bisa dipakai (USB, jaringan, wireless); nama kosong berarti printer default OS. Daftar dan status printer dibaca dari `Win32_Printer` (Windows) atau `lpstat` (CUPS).
 - Ukuran kertas dikunci ke 4R (4x6 inci, 102 x 152 mm) tanpa opsi lain, dicetak pada ukuran asli tanpa fit-to-page atau scaling. Frame landscape (1800 x 1200) diputar 90 derajat otomatis sebelum dikirim. Jumlah salinan diatur global di dashboard (default 1).
 - Status job: `queued`, `sent`, `printing`, `done`, `failed` dengan `error_message`. Retry otomatis maksimal 2 kali, lalu `failed`. Satu sesi satu job cetak (idempotency key), kecuali cetak ulang yang disengaja.
 - Pencacah media: kapasitas kertas/ribbon diisi admin (misalnya 100 lembar), berkurang tiap cetak sukses, dan direset saat media diganti. Peringatan muncul di dashboard dan panel operator saat sisa di bawah batas (default 10 lembar).

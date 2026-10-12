@@ -1,3 +1,4 @@
+import './env.js'
 import express from 'express'
 import cors from 'cors'
 import { db, runMigrations } from './db/index.js'
@@ -15,6 +16,7 @@ import { startSyncWorker } from './services/sync-worker.js'
 import { startConfigPuller } from './services/config-puller.js'
 import { startCleanupWorker } from './services/cleanup-local.js'
 import { startPrintWorker } from './services/print-worker.js'
+import { startDeviceLink } from './services/device-link.js'
 import { seedDefaults } from './services/seed-defaults.js'
 
 const HOST = process.env.BOOTH_API_HOST || '127.0.0.1'
@@ -79,6 +81,7 @@ async function boot() {
   startConfigPuller()
   startCleanupWorker()
   startPrintWorker()
+  startDeviceLink()
 
   app.listen(PORT, HOST, () => {
     logger.info(`Booth API listening on http://${HOST}:${PORT}`)

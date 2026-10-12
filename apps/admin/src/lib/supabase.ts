@@ -82,3 +82,17 @@ export async function adminFetch(path: string, options: RequestInit = {}): Promi
     headers
   })
 }
+
+/** Untuk aksi simpan/kirim: melempar Error berisi pesan server bila respons tidak OK. */
+export async function adminSend<T = any>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await adminFetch(path, options)
+  const data = await res.json().catch(() => null)
+  if (!res.ok) {
+    throw new Error(data?.error || `Request gagal (HTTP ${res.status})`)
+  }
+  return data as T
+}
+
+export function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback
+}

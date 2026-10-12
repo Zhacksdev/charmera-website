@@ -1,14 +1,14 @@
-import { spawn } from 'child_process'
+import { runFfmpeg } from './ffmpeg.js'
 import { join } from 'path'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import sharp from 'sharp'
+import { photoForSlot } from './slot-photo.js'
 
 const OUTPUTS_DIR = process.env.DATA_DIR 
   ? join(process.env.DATA_DIR, 'outputs') 
   : join(process.cwd(), 'data', 'outputs')
 
-const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg'
 
 export interface RenderGifOptions {
   sessionId: string
@@ -49,49 +49,12 @@ export async function renderGif(options: RenderGifOptions): Promise<string> {
   
   const frames: Buffer[] = []
   
+  // tiap frame GIF menampilkan satu foto (di semua slot frame) ±frame_duration — flipbook foto sesi
   for (const photo of sortedPhotos) {
-    const slot = slots.find(s => s.n === photo.slot_index + 1)
-    if (!slot) continue
-    
     const frameBuffers: sharp.OverlayOptions[] = []
     
-    for (const p of sortedPhotos) {
-      const s = slots.find(sl => sl.n === p.slot_index + 1)
-      if (!s) continue
-      
-      const photoBuffer = await readFile(p.path)
-      const photoImage = sharp(photoBuffer)
-      const { width: photoW, height: photoH } = await photoImage.metadata()
-      
-      if (!photoW || !photoH) continue
-      
-      const padding = 4
-      const slotRatio = s.w / s.h
-      const photoRatio = photoW / photoH
-      
-      let renderW: number
-      let renderH: number
-      
-      if (photoRatio > slotRatio) {
-        renderH = s.h + padding * 2
-        renderW = renderH * photoRatio
-      } else {
-        renderW = s.w + padding * 2
-        renderH = renderW / photoRatio
-      }
-      
-      const resizedPhoto = await photoImage
-        .resize(Math.round(renderW), Math.round(renderH), {
-          fit: 'cover',
-          position: 'center'
-        })
-        .toBuffer()
-      
-      frameBuffers.push({
-        input: resizedPhoto,
-        left: Math.round(s.x - padding + (s.w - renderW) / 2),
-        top: Math.round(s.y - padding + (s.h - renderH) / 2)
-      })
+    for (const s of slots) {
+      frameBuffers.push(await photoForSlot(photo.path, s, canvas))
     }
     
     const frameBuffer = await readFile(framePath)
@@ -134,25 +97,17 @@ export async function renderGif(options: RenderGifOptions): Promise<string> {
   
   const palettePath = join(OUTPUTS_DIR, `${sessionId}_palette.png`)
   
-  await new Promise<void>((resolve, reject) => {
-    const ffmpegPalette = spawn(FFMPEG_PATH, [
+  await runFfmpeg([
       '-y',
       '-start_number', '0',
       '-i', join(OUTPUTS_DIR, `${sessionId}_frame_%d.png`),
       '-vf', `palettegen=stats_mode=diff`,
       palettePath
-    ])
-
-    ffmpegPalette.on('close', (code) => {
-      if (code === 0) resolve()
-      else reject(new Error(`Palette generation failed with code ${code}`))
-    })
-  })
+    ], 'Palette generation')
 
   const fps = 1000 / frameDurationMs
 
-  await new Promise<void>((resolve, reject) => {
-    const ffmpegGif = spawn(FFMPEG_PATH, [
+  await runFfmpeg([
       '-y',
       '-framerate', fps.toString(),
       '-start_number', '0',
@@ -160,13 +115,7 @@ export async function renderGif(options: RenderGifOptions): Promise<string> {
       '-i', palettePath,
       '-lavfi', `paletteuse=dither=bayer:bayer_scale=5`,
       outputPath
-    ])
-
-    ffmpegGif.on('close', (code) => {
-      if (code === 0) resolve()
-      else reject(new Error(`GIF generation failed with code ${code}`))
-    })
-  })
+    ], 'GIF generation')
   
   for (const path of framePaths) {
     try {

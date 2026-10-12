@@ -37,7 +37,7 @@ packages/
 
 ## Menjalankan
 
-Panduan lengkap langkah demi langkah ada di [`guide/RUNNING.md`](guide/RUNNING.md).
+Booth dengan tablet + laptop Windows: [`guide/RUNNING-TABLET.md`](guide/RUNNING-TABLET.md).
 
 ```bash
 pnpm install
@@ -52,13 +52,10 @@ pnpm dev
 
 ## Konfigurasi
 
-Salin `.env.example` ke `.env` dan isi nilai. Lihat `DEPLOYMENT_GUIDE.md` untuk langkah setup lengkap.
+Isi `.env` di tiap app (jangan di-commit). Variabel booth ada di `guide/RUNNING-TABLET.md`, variabel cloud di `guide/DEPLOY-VERCEL.md`.
 
 ## Dokumentasi
 
-- `guide/RUNNING.md` — **cara running lokal** (mulai dari sini)
-- `guide/SETUP-ONLINE.md` — **setup online**: Supabase, S3/R2, cloud-api, admin
-- `guide/` — PRD, arsitektur, data model, API, dan brand guide
-- `DEPLOYMENT_GUIDE.md` — setup & deploy produksi + UAT checklist
-- `PROJECT_COMPLETION_STATUS.md` — status milestone & roadmap
-- `FINAL_SUMMARY.md` — ringkasan proyek
+- `guide/RUNNING-TABLET.md` — **cara running booth di tablet** (mulai dari sini)
+- `guide/DEPLOY-VERCEL.md` — **checklist deploy cloud ke Vercel**
+- `guide/` — PRD, arsitektur, data model, API, printing, dan brand guide

@@ -9,23 +9,38 @@ interface UseClipRecorderOptions {
 
 export function useClipRecorder(options: UseClipRecorderOptions = {}) {
   const {
-    mimeType = 'video/webm',
+    mimeType,
     maxDuration = 10000
   } = options
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
+  const resolvedMimeTypeRef = useRef<string>('video/webm')
 
   const [isRecording, setIsRecording] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const getSupportedMimeType = useCallback((): string => {
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) return 'video/webm;codecs=vp9'
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) return 'video/webm;codecs=vp8'
+    if (MediaRecorder.isTypeSupported('video/webm')) return 'video/webm'
+    if (MediaRecorder.isTypeSupported('video/mp4')) return 'video/mp4'
+    return 'video/webm'
+  }, [])
 
   const startRecording = useCallback((stream: MediaStream) => {
     try {
       chunksRef.current = []
       streamRef.current = stream
 
-      const recorder = new MediaRecorder(stream, { mimeType })
+      const resolvedMimeType = mimeType || getSupportedMimeType()
+      resolvedMimeTypeRef.current = resolvedMimeType
+
+      const recorder = new MediaRecorder(stream, { 
+        mimeType: resolvedMimeType,
+        videoBitsPerSecond: 2500000
+      })
       mediaRecorderRef.current = recorder
 
       recorder.ondataavailable = (e) => {
@@ -34,14 +49,14 @@ export function useClipRecorder(options: UseClipRecorderOptions = {}) {
         }
       }
 
-      recorder.start(100)
+      recorder.start(1000)
       setIsRecording(true)
       setError(null)
     } catch (err: any) {
       console.error('Recording error:', err)
       setError(err.message || 'Failed to start recording')
     }
-  }, [mimeType])
+  }, [mimeType, getSupportedMimeType])
 
   const stopRecording = useCallback((): Promise<Blob> => {
     return new Promise((resolve, reject) => {
@@ -53,7 +68,7 @@ export function useClipRecorder(options: UseClipRecorderOptions = {}) {
       const recorder = mediaRecorderRef.current
 
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mimeType })
+        const blob = new Blob(chunksRef.current, { type: resolvedMimeTypeRef.current })
         setIsRecording(false)
         resolve(blob)
       }
@@ -66,7 +81,17 @@ export function useClipRecorder(options: UseClipRecorderOptions = {}) {
 
       recorder.stop()
     })
-  }, [mimeType])
+  }, [])
+
+  const getClipBlob = useCallback(async (): Promise<Blob | null> => {
+    try {
+      const blob = await stopRecording()
+      return blob
+    } catch (err) {
+      console.error('Failed to get clip blob:', err)
+      return null
+    }
+  }, [stopRecording])
 
   const getClipDataUrl = useCallback(async (): Promise<string | null> => {
     try {
@@ -89,6 +114,7 @@ export function useClipRecorder(options: UseClipRecorderOptions = {}) {
     error,
     startRecording,
     stopRecording,
+    getClipBlob,
     getClipDataUrl
   }
 }

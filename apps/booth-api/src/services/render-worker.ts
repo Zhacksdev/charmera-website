@@ -4,6 +4,8 @@ import { logger } from './logger.js'
 import { renderStrip } from './render-strip.js'
 import { renderGif } from './render-gif.js'
 import { renderLivePhoto } from './render-live.js'
+import { completeSessionIfDone } from './session-flow.js'
+import { getConfig } from './config.js'
 import type { Layout } from '@chamera/shared'
 
 export interface RenderJob {
@@ -16,7 +18,19 @@ export interface RenderJob {
   outputPath?: string
 }
 
+let isRendering = false
+
 export async function processRenderJobs() {
+  if (isRendering) return
+  isRendering = true
+  try {
+    await processNextRenderJob()
+  } finally {
+    isRendering = false
+  }
+}
+
+async function processNextRenderJob() {
   const pendingJobs = db.prepare(`
     SELECT * FROM render_jobs 
     WHERE status = 'pending' 
@@ -56,6 +70,12 @@ export async function processRenderJobs() {
         SET status = ?, attempts = ?, error_message = ?
         WHERE id = ?
       `).run(nextStatus, attempts, err.message, job.id)
+    }
+
+    try {
+      completeSessionIfDone(job.session_id)
+    } catch (err) {
+      logger.error({ err, session_id: job.session_id }, 'Failed to close session')
     }
   }
 }
@@ -106,11 +126,14 @@ async function processRenderJob(job: any): Promise<string> {
       })
       
     case 'gif':
+      const gifConfig = (getConfig() as any)?.gif_config || {}
       return await renderGif({
         sessionId: job.session_id,
         photos: photos.map(p => ({ slot_index: p.slot_index, path: p.path })),
         framePath: frameKeyedPath,
-        layout
+        layout,
+        frameDurationMs: gifConfig.frame_duration_ms,
+        maxWidth: gifConfig.max_width
       })
       
     case 'live_h265':

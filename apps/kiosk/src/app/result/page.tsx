@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import QRCode from 'qrcode'
 
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
+// default bila timer_snapshot sesi tidak tersedia; nilai sebenarnya dari pengaturan admin
 const QR_TIMER = 15
 
 export default function ResultPage() {
@@ -25,6 +26,7 @@ function ResultContent() {
   
   useEffect(() => {
     if (!sessionId) return
+    let qrRendered = false
     
     async function fetchResult() {
       try {
@@ -35,7 +37,8 @@ function ResultContent() {
           setPrintStatus(data.print_status)
           setPrintError(data.print_error)
           
-          if (data.qr_url) {
+          if (data.qr_url && !qrRendered) {
+            qrRendered = true
             const qrData = await QRCode.toDataURL(data.qr_url, {
               width: 256,
               margin: 2,
@@ -51,8 +54,25 @@ function ResultContent() {
         console.error('Failed to fetch result:', err)
       }
     }
+
+    async function fetchTimer() {
+      try {
+        const res = await fetch(`${BOOTH_API}/api/sessions/${sessionId}`)
+        if (res.ok) {
+          const data = await res.json()
+          const qrSec = Number(data.timer_snapshot?.qr)
+          if (qrSec > 0) setRemainingSec(qrSec)
+        }
+      } catch (err) {
+        console.error('Failed to fetch session timer:', err)
+      }
+    }
     
     fetchResult()
+    fetchTimer()
+    // cetak biasanya masih antre/berjalan saat QR tampil — ikuti statusnya
+    const interval = setInterval(fetchResult, 2000)
+    return () => clearInterval(interval)
   }, [sessionId])
 
   useEffect(() => {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { adminFetch } from '../../../lib/supabase'
+import { adminFetch, adminSend, errorMessage } from '../../../lib/supabase'
 
 interface Session {
   id: string
@@ -46,13 +46,14 @@ export default function SessionsPage() {
 
   const handleReprint = async (sessionId: string) => {
     try {
-      await adminFetch('/api/admin/commands', {
+      await adminSend('/api/admin/commands', {
         method: 'POST',
         body: JSON.stringify({ type: 'reprint', session_id: sessionId })
       })
       alert('Reprint command sent')
     } catch (err) {
       console.error('Failed to reprint:', err)
+      alert(`Gagal mengirim perintah: ${errorMessage(err, 'unknown')}`)
     }
   }
 

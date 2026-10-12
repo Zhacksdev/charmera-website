@@ -1,7 +1,7 @@
 import { db } from '../db/index.js'
 import { logger } from './logger.js'
 import { join } from 'path'
-import { mkdirSync, writeFileSync } from 'fs'
+import { mkdirSync, writeFileSync, existsSync } from 'fs'
 
 const DEVICE_API_URL = process.env.DEVICE_API_URL || ''
 const DEVICE_KEY = process.env.DEVICE_KEY || ''
@@ -70,7 +70,8 @@ export async function pullConfig(): Promise<{ config: Config | null; frames: Fra
     const res = await fetch(`${DEVICE_API_URL}/api/device/config`, {
       headers: {
         'Authorization': `Bearer ${DEVICE_KEY}`
-      }
+      },
+      signal: AbortSignal.timeout(30000)
     })
     
     if (!res.ok) {
@@ -112,28 +113,39 @@ export async function pullConfig(): Promise<{ config: Config | null; frames: Fra
       }
     }
     
+    // sisa media dihitung booth (berkurang tiap cetak) — jangan direset oleh config cloud
+    const previous = db.prepare(`SELECT value FROM config_cache WHERE key = 'settings'`).get() as { value: string } | undefined
+    const mediaRemaining = previous ? JSON.parse(previous.value).media_remaining : undefined
+
     db.prepare(`
       INSERT OR REPLACE INTO config_cache (key, value, version, fetched_at)
       VALUES ('settings', ?, ?, ?)
-    `).run(JSON.stringify(config), config.config_version, new Date().toISOString())
+    `).run(JSON.stringify({ ...config, media_remaining: mediaRemaining }), config.config_version, new Date().toISOString())
     
     // unduh PNG frame keyed ke lokal — render butuh file, bukan URL
     const frames: Frame[] = []
     for (const f of (data.frames || [])) {
-      let keyed_path: string | undefined
+      const localPath = join(framesDir(), `${f.id}.png`)
+      let keyed_path: string | undefined = existsSync(localPath) ? localPath : undefined
 
       if (f.keyed_url) {
         try {
-          const imgRes = await fetch(f.keyed_url)
+          const imgRes = await fetch(f.keyed_url, { signal: AbortSignal.timeout(30000) })
           if (imgRes.ok) {
-            keyed_path = join(framesDir(), `${f.id}.png`)
-            writeFileSync(keyed_path, Buffer.from(await imgRes.arrayBuffer()))
+            writeFileSync(localPath, Buffer.from(await imgRes.arrayBuffer()))
+            keyed_path = localPath
           } else {
-            logger.warn({ frame: f.id, status: imgRes.status }, 'Frame download failed')
+            logger.warn({ frame: f.id, status: imgRes.status }, 'Frame download failed — pakai file lama bila ada')
           }
         } catch (dlErr) {
-          logger.warn({ frame: f.id, err: dlErr }, 'Frame download failed')
+          logger.warn({ frame: f.id, err: dlErr }, 'Frame download failed — pakai file lama bila ada')
         }
+      }
+
+      // tanpa PNG keyed, render pasti gagal — jangan tampilkan frame ini ke tamu
+      if (!keyed_path) {
+        logger.warn({ frame: f.id, name: f.name }, 'Frame dilewati: file PNG keyed tidak tersedia')
+        continue
       }
 
       frames.push({

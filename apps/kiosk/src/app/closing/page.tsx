@@ -19,13 +19,28 @@ function ClosingContent() {
 
   useEffect(() => {
     reset()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let cancelled = false
+
+    const goHomeAfter = (sec: number) => {
+      if (!cancelled) timer = setTimeout(() => router.push('/'), sec * 1000)
+    }
+
+    // durasi dari pengaturan admin (timer_snapshot sesi), default 5 detik
+    if (sessionId) {
+      fetch(`${process.env.NEXT_PUBLIC_BOOTH_API_URL || ''}/api/sessions/${sessionId}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => goHomeAfter(Number(data?.timer_snapshot?.closing) > 0 ? Number(data.timer_snapshot.closing) : CLOSING_TIMER))
+        .catch(() => goHomeAfter(CLOSING_TIMER))
+    } else {
+      goHomeAfter(CLOSING_TIMER)
+    }
     
-    const timer = setTimeout(() => {
-      router.push('/')
-    }, CLOSING_TIMER * 1000)
-    
-    return () => clearTimeout(timer)
-  }, [reset, router])
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [reset, router, sessionId])
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-10 px-6 py-10 text-center">

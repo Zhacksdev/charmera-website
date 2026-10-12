@@ -29,6 +29,22 @@ export default function DownloadPage() {
     
     let cancelled = false
     let retryTimer: ReturnType<typeof setTimeout>
+    // QR bisa di-scan sebelum booth selesai sync: 404/202 = "masih diproses", coba lagi ±3 menit
+    const PROCESSING_RETRY_MS = 4000
+    const MAX_PROCESSING_ATTEMPTS = 45
+    let attempts = 0
+
+    const retryLater = (message: string) => {
+      attempts++
+      if (attempts >= MAX_PROCESSING_ATTEMPTS) {
+        setStatus('error')
+        setError('Hasil foto belum tersedia. Coba buka lagi link ini beberapa menit lagi.')
+        return
+      }
+      setStatus('processing')
+      setError(message)
+      retryTimer = setTimeout(fetchDownloads, PROCESSING_RETRY_MS)
+    }
     
     async function fetchDownloads() {
       if (cancelled) return
@@ -38,10 +54,10 @@ export default function DownloadPage() {
         
         if (cancelled) return
         
-        if (res.status === 202 || data.status === 'processing') {
-          setStatus('processing')
-          setError(data.message)
-          retryTimer = setTimeout(fetchDownloads, 3000)
+        if (res.status === 202 || res.status === 404 || data.status === 'processing') {
+          retryLater(data.message || 'Sedang diproses, coba lagi sebentar')
+        } else if (res.ok && data.status === 'ready' && (data.files || []).length === 0) {
+          retryLater('Menyiapkan file...')
         } else if (res.ok && data.status === 'ready') {
           setStatus('ready')
           setFiles(data.files || [])
@@ -51,10 +67,8 @@ export default function DownloadPage() {
           setError(data.message || data.error || 'File tidak ditemukan')
         }
       } catch (err) {
-        if (!cancelled) {
-          setStatus('error')
-          setError('Gagal mengambil file')
-        }
+        // jaringan HP putus sesaat — coba lagi, jangan langsung gagal
+        if (!cancelled) retryLater('Menghubungkan...')
       }
     }
     

@@ -102,8 +102,8 @@ export function useCamera(options: UseCameraOptions = {}) {
     }
   }, [width, height, facingMode])
 
-  const capturePhoto = useCallback((): string | null => {
-    if (!videoRef.current || !isReady) return null
+  const capturePhoto = useCallback((): Promise<Blob | null> => {
+    if (!videoRef.current || !isReady) return Promise.resolve(null)
 
     const video = videoRef.current
     const canvas = document.createElement('canvas')
@@ -111,10 +111,15 @@ export function useCamera(options: UseCameraOptions = {}) {
     canvas.height = video.videoHeight
 
     const ctx = canvas.getContext('2d')
-    if (!ctx) return null
+    if (!ctx) return Promise.resolve(null)
 
     ctx.drawImage(video, 0, 0)
-    return canvas.toDataURL('image/jpeg', 0.95)
+    
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        resolve(blob)
+      }, 'image/jpeg', 0.95)
+    })
   }, [isReady])
 
   useEffect(() => {

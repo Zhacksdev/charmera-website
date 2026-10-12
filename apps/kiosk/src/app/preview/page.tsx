@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense } from 'react'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useKioskStore } from '../../stores/kioskStore'
 import { useStageTimer } from '../../hooks'
@@ -21,9 +21,11 @@ function PreviewContent() {
   const [loading, setLoading] = useState(false)
   const [config, setConfig] = useState<any>(null)
 
+  // timer Preview habis: server memproses & mencetak otomatis; finalize di sini idempotent
   const { remainingSec, isExpired } = useStageTimer({
     sessionId,
-    onComplete: () => handleFinalize()
+    activeStatuses: ['previewing', 'frame_selected', 'capturing'],
+    onComplete: () => void handleFinalizeRef.current()
   })
 
   useEffect(() => {
@@ -42,29 +44,34 @@ function PreviewContent() {
     fetchConfig()
   }, [])
 
+  const finalizingRef = useRef(false)
   const handleFinalize = useCallback(async () => {
-    if (!sessionId || loading) return
+    if (!sessionId || finalizingRef.current) return
+    finalizingRef.current = true
     setLoading(true)
     
     try {
       const res = await fetch(`${BOOTH_API}/api/sessions/${sessionId}/finalize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ print: config?.print_mode !== 'digital_only' }),
+        body: JSON.stringify({ print: config?.print_mode === 'local' }),
       })
       
       if (res.ok) {
         router.push(`/processing?session=${sessionId}`)
+        return
       }
     } catch (err) {
       console.error('Failed to finalize:', err)
-    } finally {
-      setLoading(false)
     }
-  }, [sessionId, loading, config, router])
+    finalizingRef.current = false
+    setLoading(false)
+  }, [sessionId, config, router])
+  const handleFinalizeRef = useRef(handleFinalize)
+  handleFinalizeRef.current = handleFinalize
 
   const outputMode = config?.output_mode || 'photo_only'
-  const showPrintButton = config?.print_mode !== 'digital_only'
+  const showPrintButton = config?.print_mode === 'local'
   const capturedPhotos = Array.from(photos.values()).sort((first, second) => first.slot_index - second.slot_index)
   const firstClip = capturedPhotos.find((photo) => photo.clipDataUrl)?.clipDataUrl
 

@@ -3,8 +3,19 @@ import { statfs } from 'fs/promises'
 import { join } from 'path'
 import { db } from '../db/index.js'
 import { getConfig } from '../services/config.js'
+import { getPrinterHealth } from '../services/printer.js'
+import { isFfmpegAvailable } from '../services/ffmpeg.js'
 
 const router = Router()
+
+// cek ffmpeg sekali per menit — dibutuhkan render GIF & Live Photo (output_mode full)
+let ffmpegCache: { at: number; ok: boolean } | null = null
+async function ffmpegOk(): Promise<boolean> {
+  if (!ffmpegCache || Date.now() - ffmpegCache.at > 60000) {
+    ffmpegCache = { at: Date.now(), ok: await isFfmpegAvailable() }
+  }
+  return ffmpegCache.ok
+}
 
 router.get('/', async (req, res) => {
   try {
@@ -33,9 +44,16 @@ router.get('/', async (req, res) => {
       // statfs gagal — laporkan null, kiosk menampilkan pesan netral
     }
 
+    const printer = await getPrinterHealth()
+    const ffmpeg = config?.output_mode === 'full' ? await ffmpegOk() : null
+
     res.json({
       config_loaded: !!config,
       config_version: config?.config_version || 0,
+      output_mode: config?.output_mode || 'photo_only',
+      print_mode: config?.print_mode || 'digital_only',
+      printer,
+      ffmpeg_ok: ffmpeg,
       preflight: preflightResult,
       outbox_pending: outboxPending.count,
       disk_free_gb: diskFreeGb,

@@ -63,13 +63,65 @@ export function calculateBackoff(attempts: number): number {
   return Math.min(backoff, MAX_BACKOFF_MS)
 }
 
-export async function processOutbox() {
-  const item = getNextOutboxItem()
-  
-  if (!item) return
+const MAX_ITEMS_PER_TICK = 10
+let isSyncing = false
 
+export async function processOutbox() {
   // offline mode: item tetap pending sampai DEVICE_API_URL diset
-  if (!DEVICE_API_URL) return
+  if (!DEVICE_API_URL || isSyncing) return
+  isSyncing = true
+  try {
+    for (let i = 0; i < MAX_ITEMS_PER_TICK; i++) {
+      const item = getNextOutboxItem()
+      if (!item) break
+      await processOutboxItem(item)
+    }
+  } finally {
+    isSyncing = false
+  }
+}
+
+function sessionIdOf(item: OutboxItem): string | null {
+  if (item.entity === 'session') return item.entity_id
+  if (item.entity === 'output') {
+    try {
+      const payload = typeof item.payload === 'string' ? JSON.parse(item.payload) : item.payload
+      return payload?.session_id || null
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+/** sync_status sesi lokal: synced bila semua item sesi terkirim, failed bila ada yang menyerah. */
+function refreshSessionSyncStatus(sessionId: string): void {
+  const rows = db.prepare(`
+    SELECT status FROM outbox
+    WHERE (entity = 'session' AND entity_id = ?)
+       OR (entity = 'output' AND json_extract(payload, '$.session_id') = ?)
+  `).all(sessionId, sessionId) as Array<{ status: string }>
+
+  if (rows.length === 0) return
+  const status = rows.every((r) => r.status === 'synced')
+    ? 'synced'
+    : rows.some((r) => r.status === 'failed') ? 'failed' : 'syncing'
+
+  db.prepare(`UPDATE sessions SET sync_status = ? WHERE id = ?`).run(status, sessionId)
+}
+
+/** Kembalikan item gagal ke antrean (tombol Retry Sync di panel operator / dashboard). */
+export function retryFailedOutbox(): number {
+  const result = db.prepare(`
+    UPDATE outbox SET status = 'pending', attempts = 0, next_try_at = NULL WHERE status = 'failed'
+  `).run()
+  logger.info({ items: result.changes }, 'Failed outbox items requeued')
+  return result.changes
+}
+
+async function processOutboxItem(item: OutboxItem) {
+  const sessionId = sessionIdOf(item)
+  item = { ...item, payload: typeof item.payload === 'string' ? JSON.parse(item.payload) : item.payload }
 
   try {
     db.prepare(`UPDATE outbox SET status = 'syncing' WHERE id = ?`).run(item.id)
@@ -97,6 +149,8 @@ export async function processOutbox() {
         UPDATE outbox SET status = 'pending', attempts = ?, next_try_at = ? WHERE id = ?
       `).run(attempts, nextTryAt, item.id)
     }
+  } finally {
+    if (sessionId) refreshSessionSyncStatus(sessionId)
   }
 }
 
@@ -105,13 +159,15 @@ async function syncItem(item: OutboxItem): Promise<void> {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${DEVICE_KEY}`
   }
+  const timeout = () => AbortSignal.timeout(30000)
   
   switch (item.entity) {
     case 'session':
       await fetch(`${DEVICE_API_URL}/api/device/sessions`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(item.payload)
+        body: JSON.stringify(item.payload),
+        signal: timeout()
       }).then(res => {
         if (!res.ok) throw new Error(`Sync failed: ${res.status}`)
         return res.json()
@@ -129,7 +185,8 @@ async function syncItem(item: OutboxItem): Promise<void> {
       const presignRes = await fetch(`${DEVICE_API_URL}/api/device/uploads/presign`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ key: s3Key, content_type: contentType, type })
+        body: JSON.stringify({ key: s3Key, content_type: contentType, type }),
+        signal: timeout()
       }).then(res => {
         if (!res.ok) throw new Error(`Presign failed: ${res.status}`)
         return res.json()
@@ -138,7 +195,8 @@ async function syncItem(item: OutboxItem): Promise<void> {
       const put = await fetch(presignRes.upload_url, {
         method: 'PUT',
         headers: { 'Content-Type': contentType },
-        body: await readFile(path)
+        body: await readFile(path),
+        signal: AbortSignal.timeout(300000)
       })
 
       if (!put.ok) {
@@ -148,7 +206,8 @@ async function syncItem(item: OutboxItem): Promise<void> {
       const complete = await fetch(`${DEVICE_API_URL}/api/device/sessions/${session_id}/complete`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ outputs: [{ type, key: s3Key }] })
+        body: JSON.stringify({ outputs: [{ type, key: s3Key }] }),
+        signal: timeout()
       })
 
       if (!complete.ok) {
@@ -157,23 +216,14 @@ async function syncItem(item: OutboxItem): Promise<void> {
       break
     }
       
-    case 'heartbeat':
-      await fetch(`${DEVICE_API_URL}/api/device/heartbeat`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(item.payload)
-      }).then(res => {
-        if (!res.ok) throw new Error(`Heartbeat failed: ${res.status}`)
-        return res.json()
-      })
-      break
-      
     default:
       throw new Error(`Unknown entity: ${item.entity}`)
   }
 }
 
 export function startSyncWorker() {
+  // item yang terputus di tengah sync (crash/laptop mati) dikirim ulang — semua operasi idempotent
+  db.prepare(`UPDATE outbox SET status = 'pending' WHERE status = 'syncing'`).run()
   setInterval(processOutbox, 5000)
   logger.info('Sync worker started')
 }
@@ -201,8 +251,4 @@ export function queueOutput(sessionId: string, type: string, path: string) {
     type,
     path
   }, type === 'strip' ? 9 : type === 'gif' ? 7 : 5)
-}
-
-export function queueHeartbeat(data: any) {
-  addToOutbox('heartbeat', 'heartbeat', 'insert', data, 1)
 }

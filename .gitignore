@@ -45,3 +45,6 @@ coverage
 
 # Supabase
 .supabase
+
+# Caddy binary lokal untuk booth Windows
+deploy/windows/caddy.exe

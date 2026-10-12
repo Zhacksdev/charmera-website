@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { db } from '../db/index.js'
 import { logger } from '../services/logger.js'
+import { getPrinterSettings } from '../services/printer.js'
 
 const router = Router({ mergeParams: true })
 
@@ -49,14 +50,19 @@ router.post('/:sessionId/print', (req, res) => {
     if (job) {
       return res.status(400).json({ error: 'Print job already exists' })
     }
+
+    const printer = getPrinterSettings()
+    if (printer.print_mode !== 'local') {
+      return res.status(400).json({ error: 'Mode cetak tidak aktif' })
+    }
     
     const { v4: uuidv4 } = require('uuid')
     const jobId = uuidv4()
     
     db.prepare(`
       INSERT INTO print_jobs (id, session_id, status, printer_name, copies, created_at)
-      VALUES (?, ?, 'queued', 'default', ?, ?)
-    `).run(jobId, sessionId, copies || 1, new Date().toISOString())
+      VALUES (?, ?, 'queued', ?, ?, ?)
+    `).run(jobId, sessionId, printer.printer_name || 'default', copies || printer.copies, new Date().toISOString())
     
     logger.info({ job_id: jobId, session_id: sessionId }, 'Print job created')
     

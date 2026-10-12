@@ -1,5 +1,6 @@
 import { db } from '../db/index.js'
 import { logger } from './logger.js'
+import { getPrinterSettings } from './printer.js'
 import type { Settings, Frame } from '@chamera/shared'
 
 export function getConfig(): Settings | null {
@@ -12,7 +13,14 @@ export function getConfig(): Settings | null {
       return null
     }
 
-    return JSON.parse(configRow.value)
+    // pengaturan printer dari panel operator lokal menang atas config cloud
+    const printer = getPrinterSettings()
+    return {
+      ...JSON.parse(configRow.value),
+      print_mode: printer.print_mode,
+      printer_name: printer.printer_name || 'default',
+      copies: printer.copies
+    }
   } catch (err) {
     logger.error({ err }, 'Failed to load config from cache')
     return null

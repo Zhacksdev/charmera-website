@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { adminFetch } from '../../../lib/supabase'
+import { adminFetch, adminSend, errorMessage } from '../../../lib/supabase'
 
 interface PrinterSettings {
   print_mode: 'digital_only' | 'local' | 'custom_api'
@@ -49,14 +49,14 @@ export default function PrinterPage() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await adminFetch('/api/admin/settings', {
+      await adminSend('/api/admin/settings', {
         method: 'PATCH',
         body: JSON.stringify(printer)
       })
       alert('Printer settings saved')
     } catch (err) {
       console.error('Failed to save:', err)
-      alert('Failed to save')
+      alert(`Gagal menyimpan: ${errorMessage(err, 'unknown')}`)
     } finally {
       setSaving(false)
     }
@@ -64,13 +64,14 @@ export default function PrinterPage() {
 
   const handleTestPrint = async () => {
     try {
-      await adminFetch('/api/admin/commands', {
+      await adminSend('/api/admin/commands', {
         method: 'POST',
         body: JSON.stringify({ type: 'test_print' })
       })
       alert('Test print command sent')
     } catch (err) {
       console.error('Failed to send test print:', err)
+      alert(`Gagal mengirim perintah: ${errorMessage(err, 'unknown')}`)
     }
   }
 

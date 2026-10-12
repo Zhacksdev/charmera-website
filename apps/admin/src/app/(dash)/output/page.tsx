@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { adminFetch } from '../../../lib/supabase'
+import { adminFetch, adminSend, errorMessage } from '../../../lib/supabase'
 
 export default function OutputPage() {
   const [outputMode, setOutputMode] = useState<'photo_only' | 'full'>('full')
@@ -35,7 +35,7 @@ export default function OutputPage() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await adminFetch('/api/admin/settings', {
+      await adminSend('/api/admin/settings', {
         method: 'PATCH',
         body: JSON.stringify({
           output_mode: outputMode,
@@ -46,7 +46,7 @@ export default function OutputPage() {
       alert('Output settings saved')
     } catch (err) {
       console.error('Failed to save:', err)
-      alert('Failed to save')
+      alert(`Gagal menyimpan: ${errorMessage(err, 'unknown')}`)
     } finally {
       setSaving(false)
     }

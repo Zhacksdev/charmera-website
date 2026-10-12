@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { adminFetch } from '../../../lib/supabase'
+import { adminFetch, adminSend, errorMessage } from '../../../lib/supabase'
 
 interface Health {
   booth_online: boolean
@@ -128,11 +128,15 @@ export default function HealthPage() {
       <div className="mt-6 flex gap-3">
         <button
           onClick={async () => {
-            await adminFetch('/api/admin/commands', {
-              method: 'POST',
-              body: JSON.stringify({ type: 'retry_sync' })
-            })
-            alert('Retry sync command sent')
+            try {
+              await adminSend('/api/admin/commands', {
+                method: 'POST',
+                body: JSON.stringify({ type: 'retry_sync' })
+              })
+              alert('Retry sync command sent')
+            } catch (err) {
+              alert(`Gagal mengirim perintah: ${errorMessage(err, 'unknown')}`)
+            }
           }}
           className="bg-cherry text-cream px-6 py-3 rounded-lg font-semibold"
         >

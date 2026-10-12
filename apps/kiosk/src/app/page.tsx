@@ -85,6 +85,12 @@ export default function HomePage() {
             {preflight.disk.status === 'warning' && (
               <div>⚠️ {preflight.disk.message}</div>
             )}
+            {preflight.config.status === 'warning' && (
+              <div>⚠️ {preflight.config.message}</div>
+            )}
+            {preflight.printer && preflight.printer.status !== 'ok' && (
+              <div>⚠️ {preflight.printer.message}</div>
+            )}
           </div>
         )}
         

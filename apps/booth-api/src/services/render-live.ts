@@ -1,4 +1,4 @@
-import { spawn } from 'child_process'
+import { runFfmpeg } from './ffmpeg.js'
 import { join } from 'path'
 import { readFile, writeFile, mkdir, unlink } from 'fs/promises'
 import { existsSync } from 'fs'
@@ -8,7 +8,6 @@ const OUTPUTS_DIR = process.env.DATA_DIR
   ? join(process.env.DATA_DIR, 'outputs') 
   : join(process.cwd(), 'data', 'outputs')
 
-const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg'
 
 export interface RenderLiveOptions {
   sessionId: string
@@ -49,8 +48,7 @@ export async function renderLivePhoto(options: RenderLiveOptions): Promise<{ h26
     const clip = sortedClips[i]
     const outputPath = join(OUTPUTS_DIR, `${sessionId}_clip_${i}_normalized.mp4`)
     
-    await new Promise<void>((resolve, reject) => {
-      const ffmpeg = spawn(FFMPEG_PATH, [
+    await runFfmpeg([
         '-y',
         '-i', clip.path,
         '-r', '30',
@@ -59,13 +57,7 @@ export async function renderLivePhoto(options: RenderLiveOptions): Promise<{ h26
         '-crf', '23',
         '-pix_fmt', 'yuv420p',
         outputPath
-      ])
-      
-      ffmpeg.on('close', (code) => {
-        if (code === 0) resolve()
-        else reject(new Error(`Clip normalization failed with code ${code}`))
-      })
-    })
+      ], 'Clip normalization')
     
     normalizedClips.push(outputPath)
   }
@@ -95,7 +87,7 @@ export async function renderLivePhoto(options: RenderLiveOptions): Promise<{ h26
     }
     
     filterComplex.push(
-      `[${i}:v]scale=${scaledSlot.w}:${scaledSlot.h}:force_original_aspect_ratio=decrease,pad=${scaledSlot.w}:${scaledSlot.h}:(ow-iw)/2:(oh-ih)/2,setsar=1[clip${i}]`
+      `[${i}:v]scale=${scaledSlot.w}:${scaledSlot.h}:force_original_aspect_ratio=increase,crop=${scaledSlot.w}:${scaledSlot.h},setsar=1[clip${i}]`
     )
   }
   
@@ -127,8 +119,7 @@ export async function renderLivePhoto(options: RenderLiveOptions): Promise<{ h26
   
   const h265Path = join(OUTPUTS_DIR, `${sessionId}_live_h265.mp4`)
   
-  await new Promise<void>((resolve, reject) => {
-    const ffmpeg = spawn(FFMPEG_PATH, [
+  await runFfmpeg([
       '-y',
       ...inputs,
       '-filter_complex', filterComplex.join(';'),
@@ -140,21 +131,14 @@ export async function renderLivePhoto(options: RenderLiveOptions): Promise<{ h26
       '-tag:v', 'hvc1',
       '-movflags', '+faststart',
       h265Path
-    ])
-    
-    ffmpeg.on('close', (code) => {
-      if (code === 0) resolve()
-      else reject(new Error(`H.265 encoding failed with code ${code}`))
-    })
-  })
+    ], 'H.265 encoding')
   
   let h264Path: string | undefined
   
   if (previewH264 || codec === 'h264') {
     h264Path = join(OUTPUTS_DIR, `${sessionId}_live_h264.mp4`)
     
-    await new Promise<void>((resolve, reject) => {
-      const ffmpeg = spawn(FFMPEG_PATH, [
+    await runFfmpeg([
         '-y',
         '-i', h265Path,
         '-c:v', 'libx264',
@@ -164,13 +148,7 @@ export async function renderLivePhoto(options: RenderLiveOptions): Promise<{ h26
         '-movflags', '+faststart',
         '-vf', 'scale=-2:720',
         h264Path!
-      ])
-      
-      ffmpeg.on('close', (code) => {
-        if (code === 0) resolve()
-        else reject(new Error(`H.264 encoding failed with code ${code}`))
-      })
-    })
+      ], 'H.264 encoding')
   }
   
   for (const path of normalizedClips) {

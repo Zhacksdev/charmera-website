@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { adminFetch } from '../../../lib/supabase'
+import { adminFetch, adminSend, errorMessage } from '../../../lib/supabase'
 
 interface Timers {
   frame: number
@@ -49,14 +49,14 @@ export default function TimersPage() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await adminFetch('/api/admin/settings', {
+      await adminSend('/api/admin/settings', {
         method: 'PATCH',
         body: JSON.stringify({ timers })
       })
       alert('Timer settings saved')
     } catch (err) {
       console.error('Failed to save:', err)
-      alert('Failed to save')
+      alert(`Gagal menyimpan: ${errorMessage(err, 'unknown')}`)
     } finally {
       setSaving(false)
     }

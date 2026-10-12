@@ -3,6 +3,7 @@ import { join } from 'path'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import type { Layout, Slot } from '@chamera/shared'
+import { photoForSlot } from './slot-photo.js'
 
 const OUTPUTS_DIR = process.env.DATA_DIR 
   ? join(process.env.DATA_DIR, 'outputs') 
@@ -51,39 +52,7 @@ export async function renderStrip(options: RenderStripOptions): Promise<string> 
     const slot = slots.find(s => s.n === photo.slot_index + 1)
     if (!slot) continue
     
-    const photoBuffer = await readFile(photo.path)
-    const photoImage = sharp(photoBuffer)
-    const { width: photoW, height: photoH } = await photoImage.metadata()
-    
-    if (!photoW || !photoH) continue
-    
-    const padding = 4
-    const slotRatio = slot.w / slot.h
-    const photoRatio = photoW / photoH
-    
-    let renderW: number
-    let renderH: number
-    
-    if (photoRatio > slotRatio) {
-      renderH = slot.h + padding * 2
-      renderW = renderH * photoRatio
-    } else {
-      renderW = slot.w + padding * 2
-      renderH = renderW / photoRatio
-    }
-    
-    const resizedPhoto = await photoImage
-      .resize(Math.round(renderW), Math.round(renderH), {
-        fit: 'cover',
-        position: 'center'
-      })
-      .toBuffer()
-    
-    composites.push({
-      input: resizedPhoto,
-      left: Math.round(slot.x - padding + (slot.w - renderW) / 2),
-      top: Math.round(slot.y - padding + (slot.h - renderH) / 2)
-    })
+    composites.push(await photoForSlot(photo.path, slot, canvas))
   }
   
   const frameKeyedBuffer = await readFile(frameKeyedPath)
