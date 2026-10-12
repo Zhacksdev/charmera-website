@@ -44,6 +44,8 @@ function ActionContent() {
   const [captureError, setCaptureError] = useState('')
   const [uploads, setUploads] = useState<Record<number, UploadState>>({})
   const [continuing, setContinuing] = useState(false)
+  const [retakeMode, setRetakeMode] = useState(false)
+  const [capturingShot, setCapturingShot] = useState<number | null>(null)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -155,6 +157,7 @@ function ActionContent() {
 
     capturingRef.current = true
     setIsCapturing(true)
+    setCapturingShot(slotIndex)
     setCaptureError('')
 
     try {
@@ -202,6 +205,7 @@ function ActionContent() {
     } finally {
       capturingRef.current = false
       setIsCapturing(false)
+      setCapturingShot(null)
       setCountdown(0)
       if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current)
@@ -277,10 +281,14 @@ function ActionContent() {
   }, [sessionId, setCustomText])
 
   const minPhotoTime = 8
-  const lastShot = totalSlots - 1
   const canRetake = allSlotsFilled && remainingSec >= minPhotoTime && retakeCount < maxRetake && !isCapturing
   const uploadsPending = Object.values(uploads).some((state) => state === 'uploading')
-  const canContinue = allSlotsFilled && !isCapturing && failedShots.length === 0 && !continuing
+  const canContinue = allSlotsFilled && !isCapturing && failedShots.length === 0 && !continuing && !retakeMode
+
+  const pickRetakeShot = (shotIndex: number) => {
+    setRetakeMode(false)
+    void handleRetake(shotIndex)
+  }
 
   if (cameraError) {
     return (
@@ -301,6 +309,8 @@ function ActionContent() {
     ? 'Menyiapkan kamera...'
     : isCapturing
       ? `Foto ${Math.min(nextShot + 1, totalSlots)} dari ${totalSlots}`
+      : retakeMode
+        ? 'Ketuk foto yang mau diulang'
       : allSlotsFilled
         ? (continuing && uploadsPending ? 'Mengirim foto...' : 'Semua foto sudah diambil!')
         : nextShot === 0 ? 'Bersiap, countdown dimulai...' : `Ganti gaya! Foto ${nextShot + 1} sebentar lagi`
@@ -327,8 +337,20 @@ function ActionContent() {
             customText={customText}
             renderSlot={(shotIndex) => {
               const photo = photos.get(shotIndex)
+              // slot yang sedang difoto (urutan otomatis atau retake) disorot
+              if (shotIndex === capturingShot || (!photo && shotIndex === nextShot)) {
+                return <span className="frame-composite-current flex h-full w-full items-center justify-center">Foto {shotIndex + 1}</span>
+              }
+              if (photo && retakeMode) {
+                return (
+                  <button onClick={() => pickRetakeShot(shotIndex)} className="retake-slot" aria-label={`Ulangi foto ${shotIndex + 1}`}>
+                    <img src={photo.dataUrl} alt="" />
+                    <span>↻ Ulangi foto {shotIndex + 1}</span>
+                  </button>
+                )
+              }
               if (photo) return <img src={photo.dataUrl} alt={`Foto ${shotIndex + 1}`} />
-              return <span className={`flex h-full w-full items-center justify-center ${shotIndex === nextShot ? 'frame-composite-current' : ''}`}>Foto {shotIndex + 1}</span>
+              return <span className="flex h-full w-full items-center justify-center">Foto {shotIndex + 1}</span>
             }}
           />}
         </div>
@@ -362,14 +384,20 @@ function ActionContent() {
           </button>
         ))}
 
-        {canRetake && failedShots.length === 0 && (
+        {/* Retake: masuk mode pilih, lalu tamu mengetuk foto di frame yang mau diulang */}
+        {allSlotsFilled && failedShots.length === 0 && (retakeMode ? (
+          <button onClick={() => setRetakeMode(false)} className="btn-secondary min-w-40 text-lg">
+            Batal retake
+          </button>
+        ) : (
           <button
-            onClick={() => handleRetake(lastShot)}
+            onClick={() => setRetakeMode(true)}
+            disabled={!canRetake || continuing}
             className="btn-secondary min-w-40 text-lg"
           >
-            Ulangi foto terakhir
+            {retakeCount >= maxRetake ? 'Retake habis' : `Retake (${maxRetake - retakeCount}x)`}
           </button>
-        )}
+        ))}
 
         {allSlotsFilled && (
           <button
