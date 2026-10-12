@@ -49,5 +49,5 @@ coverage
 # Caddy binary lokal untuk booth Windows
 deploy/windows/caddy.exe
 
-# Hasil pnpm deploy untuk function cloud-api di Vercel
+# Folder sementara pnpm deploy (build cloud-api di Vercel)
 apps/cloud-api/deploy-out/

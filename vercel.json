@@ -4,9 +4,9 @@
     "cloud-api": {
       "root": "apps/cloud-api",
       "framework": "express",
-      "entrypoint": "vercel-entry.js",
+      "entrypoint": "src/server.ts",
       "installCommand": "cd ../.. && pnpm install --frozen-lockfile --prod=false",
-      "buildCommand": "cd ../.. && pnpm --filter @chamera/cloud-api... run build && rm -rf apps/cloud-api/deploy-out && pnpm --filter @chamera/cloud-api deploy --prod apps/cloud-api/deploy-out"
+      "buildCommand": "cd ../.. && pnpm --filter @chamera/cloud-api... run build && rm -rf apps/cloud-api/deploy-out && pnpm --filter @chamera/cloud-api deploy --prod apps/cloud-api/deploy-out && rm -rf apps/cloud-api/node_modules && mv apps/cloud-api/deploy-out/node_modules apps/cloud-api/node_modules && rm -rf apps/cloud-api/deploy-out"
     },
     "download": {
       "root": "apps/download",
