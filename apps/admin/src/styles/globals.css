@@ -30,6 +30,15 @@ button {
   transition: all 0.2s ease;
 }
 
+/* latar booth (assets/background.png di atas cherry) — login & sidebar */
+.web-shell {
+  background-color: var(--cherry);
+  background-image: url('/background.png');
+  background-position: center;
+  background-size: cover;
+  color: var(--cream);
+}
+
 .card {
   background-color: #FFFFFF;
   border-radius: 14px;

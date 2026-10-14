@@ -156,6 +156,7 @@ Selama booth terbuka, layar dijaga tetap menyala dan masuk layar penuh pada sent
 |---|---|
 | "Your connection is not private" | Sertifikat belum dipasang, atau di iPad belum diaktifkan di *Certificate Trust Settings* (A3). |
 | Tablet tidak bisa membuka halaman sama sekali | Firewall belum dibuka (A1), profil Wi-Fi bukan *Private*, tablet tersambung ke Wi-Fi lain/Wi-Fi tamu, atau IP laptop berubah (lihat jendela skrip). |
+| Skrip berhenti: "Port berikut sudah dipakai program lain", atau jendela menampilkan `EADDRINUSE` / `address already in use` | Port bentrok dengan aplikasi lain atau jendela Chamera lama. Lihat `PORT-BENTROK.md`. |
 | `http://<ip>:8080/ca.crt` tidak terbuka | Jendela *Chamera Caddy* tertutup atau error; jalankan ulang skrip. |
 | Kamera hitam / izin kamera tidak muncul | Halaman dibuka lewat `http://` atau `localhost`. Pakai `https://<ip>:8443`. Tutup aplikasi lain yang memakai kamera. |
 | Tombol Start tidak aktif | Lihat pesan merah di atas tombol. Biasanya jendela *Booth API* tertutup atau error. |

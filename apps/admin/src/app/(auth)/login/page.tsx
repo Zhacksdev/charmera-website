@@ -28,11 +28,12 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex items-center justify-center min-h-screen p-8">
-      <div className="card w-full max-w-sm">
+    <main className="web-shell flex flex-col items-center justify-center min-h-screen gap-6 p-8">
+      {/* sama dengan layar booth: logo krem di atas latar cherry */}
+      <img src="/logo.png" alt="Chamera, Wear your memories" className="w-[min(60vw,220px)] object-contain" />
+      <div className="card w-full max-w-sm shadow-2xl" style={{ backgroundColor: 'var(--cream)', border: 'none', borderRadius: 24 }}>
         <div className="text-center mb-6">
-          <h1 className="text-3xl font-bold text-cherry mb-2">chamera</h1>
-          <p className="text-char opacity-75">Admin Dashboard</p>
+          <p className="text-xl font-extrabold text-cherry">Admin Dashboard</p>
         </div>
         
         <form onSubmit={handleLogin} className="space-y-4">

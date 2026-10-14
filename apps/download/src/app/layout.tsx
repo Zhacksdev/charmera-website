@@ -13,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id">
-      <body className="bg-cream text-char font-sans min-h-screen">
+      <body className="web-shell font-sans min-h-screen">
         {children}
       </body>
     </html>

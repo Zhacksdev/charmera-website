@@ -55,11 +55,22 @@ button:active {
   font-size: 1rem;
 }
 
+/* latar & kartu sama dengan layar booth (assets/background.png di atas cherry) */
+.web-shell {
+  background-color: var(--cherry);
+  background-image: url('/download/background.png');
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+  color: var(--cream);
+}
+
 .card {
-  background-color: #FFFFFF;
-  border-radius: 18px;
-  border: 1px solid var(--line);
+  background-color: var(--cream);
+  border-radius: 24px;
   padding: 18px;
+  color: var(--char);
+  box-shadow: 0 12px 30px rgba(38, 33, 31, 0.25);
 }
 
 .font-display {

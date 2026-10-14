@@ -8,6 +8,7 @@ import { useStageTimer } from '../../hooks'
 import { FrameComposite } from '../../components/FrameComposite'
 import { PHOTO_FILTER_OPTIONS, filterCss, type PhotoFilter } from '../../lib/photo-filters'
 import { useUploadStates, waitForUploads } from '../../lib/upload-queue'
+import { StageHeader } from '../../components/StageHeader'
 
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
@@ -104,11 +105,7 @@ function PreviewContent() {
 
   return (
     <main className="relative flex min-h-screen flex-col overflow-y-auto p-5 md:p-8">
-      <header className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] items-center gap-2 md:gap-3">
-        <div className="timer-pill justify-self-start">{formatTimer(remainingSec)}</div>
-        <h1 className="text-center text-xl font-extrabold text-cream md:text-5xl">Hasil fotomu!</h1>
-        <div className="justify-self-end text-lg font-bold text-cream/85">{remainingSec} dtk</div>
-      </header>
+      <StageHeader title="Hasil fotomu!" remainingSec={remainingSec} />
 
       <div className="grid flex-1 grid-cols-1 items-center gap-5 py-5 md:grid-cols-3 md:gap-8">
         <OutputPreview title="Foto Strip" photos={capturedPhotos} frame={selectedFrame} customText={customText} filter={filter} />
@@ -225,8 +222,4 @@ function GifPreview({ photos, filter }: { photos: CapturedPhoto[]; filter: Photo
       )}
     </div>
   )
-}
-
-function formatTimer(seconds: number) {
-  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}.${String(seconds % 60).padStart(2, '0')}`
 }

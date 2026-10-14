@@ -20,7 +20,8 @@ export function textOverlay(
   style: TextStyle = {}
 ): sharp.OverlayOptions | null {
   if (!text || !textArea) return null
-  const { font = 'Nunito', fontSize = 32, color = '#26211F' } = style
+  // ukuran huruf mengikuti tinggi area teks yang ditandai admin (kiosk memakai rumus yang sama)
+  const { font = 'Nunito', fontSize = textFontSize(textArea), color = '#26211F' } = style
 
   const svg = `
     <svg width="${textArea.w}" height="${textArea.h}">
@@ -37,6 +38,11 @@ export function textOverlay(
   `
 
   return { input: Buffer.from(svg), left: textArea.x, top: textArea.y }
+}
+
+/** 55% tinggi kotak, dibatasi lebar kotak agar 30 karakter tetap muat */
+export function textFontSize(textArea: TextArea): number {
+  return Math.max(12, Math.round(Math.min(textArea.h * 0.55, textArea.w / 12)))
 }
 
 function escapeXml(text: string): string {

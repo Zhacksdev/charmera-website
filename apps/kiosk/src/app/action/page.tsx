@@ -9,6 +9,7 @@ import { FrameComposite } from '../../components/FrameComposite'
 import { shotNumbers } from '../../lib/frame-layout'
 import { enqueueUpload, useUploadStates } from '../../lib/upload-queue'
 import { useMirrorMode } from '../../lib/mirror-mode'
+import { StageHeader } from '../../components/StageHeader'
 
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 // jeda sebelum foto pertama (countdown langsung mulai setelah kamera siap) dan antar-foto (ganti gaya)
@@ -294,11 +295,7 @@ function ActionContent() {
 
   return (
     <main className="relative flex min-h-screen flex-col overflow-y-auto p-5 md:p-8">
-      <header className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] items-center gap-2 md:gap-3">
-        <div className="timer-pill justify-self-start">{formatTimer(remainingSec)}</div>
-        <h1 className="text-center text-xl font-extrabold text-cream md:text-5xl">Saatnya berekspresi!</h1>
-        <button onClick={handleContinue} disabled={!canContinue} className="btn-primary min-h-14 justify-self-end px-3 text-base md:min-h-16 md:px-8 md:text-lg">Lanjut</button>
-      </header>
+      <StageHeader title="Saatnya berekspresi!" remainingSec={remainingSec} />
       <div className="mt-2 text-center text-base font-bold text-cream/90" role="status">{statusText}{retakeCount > 0 ? ` · Retake ${retakeCount}/${maxRetake}` : ''}</div>
 
       {showReminder && !isCapturing && (
@@ -400,23 +397,22 @@ function ActionContent() {
 
       {captureError && <div role="alert" className="mx-auto mt-3 max-w-xl rounded-lg bg-cream px-4 py-3 text-center font-bold text-cherry">{captureError}</div>}
 
-      <div className="mx-auto mt-4 w-full max-w-xl">
-        <label htmlFor="custom-text" className="mb-2 block text-center text-xl font-extrabold text-cream">Custom textnya di sini ya!</label>
-        <input
-          id="custom-text"
-          type="text"
-          value={customText}
-          onChange={(e) => handleCustomText(e.target.value)}
-          placeholder="Tulis pesan pendek..."
-          maxLength={30}
-          className="w-full rounded-xl border-0 bg-cream px-5 py-4 text-center text-lg font-bold text-cherry placeholder:text-cherry/55 focus:outline focus:outline-4 focus:outline-butter"
-        />
-        <div className="mt-1 text-right text-sm text-cream/75">{customText.length}/30</div>
-      </div>
+      {/* hanya bila admin menandai area custom text di frame ini */}
+      {selectedFrame?.layout?.text_area && (
+        <div className="mx-auto mt-4 w-full max-w-xl">
+          <label htmlFor="custom-text" className="mb-2 block text-center text-xl font-extrabold text-cream">Custom textnya di sini ya!</label>
+          <input
+            id="custom-text"
+            type="text"
+            value={customText}
+            onChange={(e) => handleCustomText(e.target.value)}
+            placeholder="Tulis pesan pendek..."
+            maxLength={30}
+            className="w-full rounded-xl border-0 bg-cream px-5 py-4 text-center text-lg font-bold text-cherry placeholder:text-cherry/55 focus:outline focus:outline-4 focus:outline-butter"
+          />
+          <div className="mt-1 text-right text-sm text-cream/75">{customText.length}/30</div>
+        </div>
+      )}
     </main>
   )
-}
-
-function formatTimer(seconds: number) {
-  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}.${String(seconds % 60).padStart(2, '0')}`
 }

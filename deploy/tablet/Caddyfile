@@ -1,24 +1,27 @@
 {
 	auto_https disable_redirects
 	skip_install_trust
+	# API admin Caddy (port 2019) tidak dipakai booth — dimatikan agar tidak bentrok dengan Caddy lain
+	admin off
 }
 
-# BOOTH_HOST = IP LAN laptop booth (diisi otomatis oleh deploy/windows/start-booth.ps1)
-https://{$BOOTH_HOST}:8443 {
+# BOOTH_HOST = IP LAN laptop booth; port bisa diganti lewat env (diisi oleh deploy/windows/start-booth.ps1):
+# BOOTH_HTTPS_PORT (8443), BOOTH_CERT_PORT (8080), BOOTH_API_PORT (4000), KIOSK_PORT (3000)
+https://{$BOOTH_HOST}:{$BOOTH_HTTPS_PORT:8443} {
 	tls internal
 
 	# Body request ke reverse_proxy tidak dibatasi Caddy secara default (upload foto/klip aman)
 	@booth_api path /api/* /health
-	reverse_proxy @booth_api 127.0.0.1:4000 {
+	reverse_proxy @booth_api 127.0.0.1:{$BOOTH_API_PORT:4000} {
 		flush_interval -1
 	}
 
-	reverse_proxy 127.0.0.1:3000
+	reverse_proxy 127.0.0.1:{$KIOSK_PORT:3000}
 }
 
 # Unduh sertifikat CA publik Caddy ke tablet sebelum HTTPS dipercaya: http://<ip>:8080/ca.crt
 # Hanya file root.crt (publik) yang disajikan — root.key tidak pernah ikut.
-http://{$BOOTH_HOST}:8080 {
+http://{$BOOTH_HOST}:{$BOOTH_CERT_PORT:8080} {
 	handle /ca.crt {
 		root * {$CADDY_CA_DIR}
 		rewrite * /root.crt
@@ -26,6 +29,6 @@ http://{$BOOTH_HOST}:8080 {
 		file_server
 	}
 	handle {
-		respond "Chamera booth: buka /ca.crt untuk memasang sertifikat, lalu https://{$BOOTH_HOST}:8443" 200
+		respond "Chamera booth: buka /ca.crt untuk memasang sertifikat, lalu https://{$BOOTH_HOST}:{$BOOTH_HTTPS_PORT:8443}" 200
 	}
 }

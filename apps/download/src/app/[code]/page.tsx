@@ -104,17 +104,17 @@ export default function DownloadPage() {
   const liveDownload = byType('live_h265') || byType('live_h264')
 
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen p-8 bg-cream">
+    <main className="flex flex-col items-center min-h-screen px-5 py-10">
       <div className="max-w-md w-full">
-        <div className="card text-center mb-6">
-          <h1 className="text-4xl font-bold text-cherry mb-2">chamera</h1>
-          <p className="text-lg text-char">
-            Download hasil foto kamu
-          </p>
-        </div>
+        {/* sama dengan layar booth: logo krem di atas latar cherry */}
+        <header className="text-center mb-8">
+          {/* basePath /download: aset public disajikan di /download/... */}
+          <img src="/download/logo.png" alt="Chamera, Wear your memories" className="mx-auto w-[min(56vw,220px)] object-contain" />
+          <h1 className="mt-4 text-2xl font-extrabold text-cream">Download hasil foto kamu</h1>
+        </header>
 
         {status === 'loading' && (
-          <div className="text-center text-char opacity-75">
+          <div className="text-center font-bold text-cream/80">
             Memuat...
           </div>
         )}
@@ -155,11 +155,11 @@ export default function DownloadPage() {
               </div>
             )}
 
-            <div className="text-xs text-char opacity-50 text-center">
-              File expires: {new Date(expiresAt).toLocaleDateString('id-ID')}
+            <div className="text-xs text-cream/70 text-center">
+              Link berlaku sampai {new Date(expiresAt).toLocaleDateString('id-ID')}
             </div>
 
-            <div className="text-sm text-cherry text-center mt-6">
+            <div className="text-base font-extrabold text-cream text-center mt-6">
               #WearYourChamera
             </div>
           </div>
@@ -181,7 +181,7 @@ export default function DownloadPage() {
 function OutputCard({ title, downloadUrl, children }: { title: string; downloadUrl: string; children: React.ReactNode }) {
   return (
     <div className="card">
-      <div className="font-bold text-char mb-3">{title}</div>
+      <div className="text-xl font-extrabold text-cherry mb-3">{title}</div>
       <div className="mb-3">{children}</div>
       <a href={downloadUrl} download className="btn-primary w-full block text-center">
         Download

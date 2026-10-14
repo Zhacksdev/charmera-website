@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useKioskStore, type Frame } from '../../stores/kioskStore'
 import { FrameComposite } from '../../components/FrameComposite'
 import { shotNumbers } from '../../lib/frame-layout'
+import { StageHeader } from '../../components/StageHeader'
 
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
@@ -130,14 +131,7 @@ function FrameSelectContent() {
 
   return (
     <main className="relative flex min-h-screen flex-col overflow-y-auto p-5 md:p-8">
-      <header className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] items-center gap-2 md:gap-3">
-        <div className="timer-pill justify-self-start">{formatTimer(remainingSec)}</div>
-        <h1 className="text-center text-xl font-extrabold text-cream md:text-5xl">Pilih Frame kamu dulu ya</h1>
-        {/* aktif hanya setelah tamu mengetuk salah satu frame */}
-        <button onClick={() => setConfirmOpen(true)} disabled={!pickedFrame || submitting} className="btn-primary min-h-14 justify-self-end px-3 text-base md:min-h-16 md:px-8 md:text-lg">
-          Lanjut
-        </button>
-      </header>
+      <StageHeader title="Pilih Frame kamu dulu ya" remainingSec={remainingSec} />
 
       {shouldShowReminder && (
         <div role="status" className="fixed left-1/2 top-24 z-50 -translate-x-1/2 rounded-xl bg-cream px-6 py-3 font-extrabold text-cherry shadow-lg">
@@ -165,6 +159,10 @@ function FrameSelectContent() {
           <div className="text-center text-lg font-bold text-cream/90">
             {pickedFrame ? `Frame dipilih: ${pickedFrame.name}` : 'Ketuk frame untuk memilih'}
           </div>
+          {/* aktif hanya setelah tamu mengetuk salah satu frame */}
+          <button onClick={() => setConfirmOpen(true)} disabled={!pickedFrame || submitting} className="btn-primary min-w-60 px-10 text-xl">
+            Lanjut
+          </button>
           {frames.length > 1 && <div className="flex gap-3 md:hidden">{frames.map((frame) => <button key={frame.id} aria-label={`Lihat ${frame.name}`} onClick={() => setViewFrameId(frame.id)} className={`h-3 w-3 min-h-0 rounded-full p-0 ${frame.id === viewFrameId ? 'bg-cream' : 'bg-cream/40'}`} />)}</div>}
         </section>
       ) : (
@@ -195,10 +193,6 @@ function FrameSelectContent() {
       )}
     </main>
   )
-}
-
-function formatTimer(seconds: number) {
-  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}.${String(seconds % 60).padStart(2, '0')}`
 }
 
 function FrameArtwork({ frame }: { frame: Frame }) {

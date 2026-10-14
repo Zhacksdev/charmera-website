@@ -55,10 +55,12 @@ adminRouter.get('/frames', async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message })
 
-    res.json((data || []).map((f: any) => ({
+    // image_url: PNG frame (slot transparan) untuk editor area teks di dashboard, berlaku 1 jam
+    res.json(await Promise.all((data || []).map(async (f: any) => ({
       ...f,
-      slot_count: f.layout?.slots?.length ?? 0
-    })))
+      slot_count: f.layout?.slots?.length ?? 0,
+      image_url: f.keyed_key && isS3Configured() ? await presignGet(f.keyed_key).catch(() => null) : null
+    }))))
   } catch (err: any) {
     res.status(503).json({ error: err.message })
   }

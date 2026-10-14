@@ -35,10 +35,10 @@ export default function DashboardLayout({
 
   return (
     <div className="flex min-h-screen">
-      <aside className="w-64 bg-char text-cream p-4 flex flex-col">
+      <aside className="web-shell w-64 text-cream p-4 flex flex-col">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-cherry">chamera</h1>
-          <p className="text-sm opacity-75">Admin Dashboard</p>
+          <img src="/logo.png" alt="Chamera" className="w-36 object-contain" />
+          <p className="mt-2 text-sm font-bold opacity-90">Admin Dashboard</p>
         </div>
         
         <nav className="flex-1 space-y-1">
@@ -50,8 +50,8 @@ export default function DashboardLayout({
                 href={item.href}
                 className={`block px-3 py-2 rounded-lg text-sm transition-colors ${
                   isActive
-                    ? 'bg-cherry text-cream'
-                    : 'hover:bg-char-light text-cream opacity-80 hover:opacity-100'
+                    ? 'bg-cream text-cherry'
+                    : 'hover:bg-cream/20 text-cream opacity-90 hover:opacity-100'
                 }`}
               >
                 {item.label}
@@ -62,7 +62,7 @@ export default function DashboardLayout({
         
         <button
           onClick={handleLogout}
-          className="w-full mt-4 px-3 py-2 rounded-lg text-sm bg-char-light text-cream opacity-80 hover:opacity-100"
+          className="w-full mt-4 px-3 py-2 rounded-lg text-sm bg-char/40 text-cream opacity-90 hover:opacity-100"
         >
           Logout
         </button>

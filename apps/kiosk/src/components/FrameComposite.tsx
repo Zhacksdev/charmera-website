@@ -49,7 +49,8 @@ export function FrameComposite({
             x={textArea.x + textArea.w / 2}
             y={textArea.y + textArea.h / 2}
             fontFamily="Nunito, sans-serif"
-            fontSize={32}
+            // sama dengan booth-api text-overlay.ts: 55% tinggi kotak, dibatasi lebar
+            fontSize={Math.max(12, Math.round(Math.min(textArea.h * 0.55, textArea.w / 12)))}
             fill="#26211F"
             textAnchor="middle"
             dominantBaseline="middle"

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { adminFetch, adminSend, errorMessage } from '../../../lib/supabase'
 import { defaultPattern, detectPattern, renumberSlots, shotCount, type LayoutSlot, type SlotPattern } from '../../../lib/slot-numbering'
+import { TextAreaEditor, type TextArea } from '../../../components/TextAreaEditor'
 
 interface Frame {
   id: string
@@ -12,13 +13,35 @@ interface Frame {
   is_active: boolean
   sort_order: number
   slot_count?: number
-  layout?: { slots?: LayoutSlot[]; [key: string]: unknown }
+  canvas_w?: number
+  canvas_h?: number
+  image_url?: string | null
+  layout?: { slots?: LayoutSlot[]; text_area?: TextArea; canvas?: { w: number; h: number }; [key: string]: unknown }
 }
 
 export default function FramesPage() {
   const [frames, setFrames] = useState<Frame[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [editingText, setEditingText] = useState<Frame | null>(null)
+  const [savingText, setSavingText] = useState(false)
+
+  const handleSaveTextArea = async (frame: Frame, layout: { slots: LayoutSlot[]; text_area?: TextArea }) => {
+    setSavingText(true)
+    try {
+      // text_area kosong = dihapus (JSON.stringify membuang undefined)
+      await adminSend(`/api/admin/frames/${frame.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ layout: { ...frame.layout, slots: layout.slots, text_area: layout.text_area } })
+      })
+      setEditingText(null)
+      fetchFrames()
+    } catch (err) {
+      alert(`Gagal menyimpan area teks: ${errorMessage(err, 'unknown')}`)
+    } finally {
+      setSavingText(false)
+    }
+  }
 
   useEffect(() => {
     fetchFrames()
@@ -178,6 +201,21 @@ export default function FramesPage() {
               </div>
             )}
 
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-xs text-char opacity-75">
+                Custom text: {frame.layout?.text_area ? 'ada' : 'tidak ada (tamu tidak diminta mengisi)'}
+              </p>
+              <button
+                onClick={() => setEditingText(frame)}
+                disabled={!frame.image_url || !frame.layout?.slots?.length}
+                title={frame.image_url ? undefined : 'Gambar frame belum tersedia (storage belum dikonfigurasi)'}
+                className="rounded bg-line px-2 py-1 text-xs text-char"
+                style={{ minHeight: 0 }}
+              >
+                Atur area teks
+              </button>
+            </div>
+
             {frame.extra_price > 0 && (
               <p className="text-sm text-cherry font-semibold">
                 +Rp {frame.extra_price.toLocaleString('id-ID')}
@@ -185,13 +223,25 @@ export default function FramesPage() {
             )}
           </div>
         ))}
-        
+
         {frames.length === 0 && (
           <div className="col-span-full text-center py-12 text-char opacity-50">
             Belum ada frame. Upload frame green screen untuk mulai.
           </div>
         )}
       </div>
+
+      {editingText?.image_url && editingText.layout?.slots && (
+        <TextAreaEditor
+          imageUrl={editingText.image_url}
+          canvas={editingText.layout.canvas || { w: editingText.canvas_w || 1200, h: editingText.canvas_h || 1800 }}
+          slots={editingText.layout.slots}
+          textArea={editingText.layout.text_area}
+          saving={savingText}
+          onSave={(layout) => handleSaveTextArea(editingText, layout)}
+          onCancel={() => setEditingText(null)}
+        />
+      )}
     </div>
   )
 }

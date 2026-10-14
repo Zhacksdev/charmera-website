@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import QRCode from 'qrcode'
+import { StageHeader } from '../../components/StageHeader'
 
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 // default bila timer_snapshot sesi tidak tersedia; nilai sebenarnya dari pengaturan admin
@@ -108,11 +109,7 @@ function ResultContent() {
   return (
     <main className="relative flex min-h-screen flex-col overflow-y-auto p-5 md:p-8">
       {/* header sama dengan halaman Frame/Action/Preview: timer di kiri atas */}
-      <header className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] items-center gap-2 md:gap-3">
-        <div className="timer-pill justify-self-start">{formatTimer(remainingSec)}</div>
-        <h1 className="text-center text-xl font-extrabold text-cream md:text-5xl">Soft file fotomu sudah siap</h1>
-        <div />
-      </header>
+      <StageHeader title="Soft file fotomu sudah siap" remainingSec={remainingSec} />
 
       <div className="flex flex-1 flex-col items-center justify-center gap-6 py-5 text-center">
       <img src="/logo.png" alt="Chamera, Wear your memories" className="w-[min(30vw,180px)] object-contain" />
@@ -169,8 +166,4 @@ function ResultContent() {
       </div>
     </main>
   )
-}
-
-function formatTimer(seconds: number) {
-  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}.${String(seconds % 60).padStart(2, '0')}`
 }
