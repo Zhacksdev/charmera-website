@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense } from 'react'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useKioskStore, type Frame } from '../../stores/kioskStore'
 import { FrameComposite } from '../../components/FrameComposite'
@@ -56,19 +56,38 @@ function FrameSelectContent() {
     }
   }, [frames, viewFrameId])
 
+  // nilai yang berubah saat tamu menggeser/memilih frame dibaca lewat ref: polling tidak di-restart
+  // tiap pergantian frame (dulu membuat timer berhenti selama tamu menggeser carousel)
+  const framesRef = useRef(frames)
+  framesRef.current = frames
+  const handleTimeoutRef = useRef<() => void>(() => {})
+
+  // sisa waktu: angka server saat polling + hitung mundur lokal di antaranya, agar timer selalu jalan
+  const remainingBaseRef = useRef<{ sec: number; at: number } | null>(null)
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const base = remainingBaseRef.current
+      if (base) setRemainingSec(Math.max(0, base.sec - Math.floor((Date.now() - base.at) / 1000)))
+    }, 250)
+    return () => clearInterval(tick)
+  }, [])
+
   useEffect(() => {
     if (!sessionId) return
+    let polling = false
 
     const interval = setInterval(async () => {
+      if (polling) return
+      polling = true
       try {
         const res = await fetch(`${BOOTH_API}/api/sessions/${sessionId}`)
         if (res.ok) {
           const data = await res.json()
           setSession(data)
-          setRemainingSec(data.remaining_sec || 0)
+          remainingBaseRef.current = { sec: data.remaining_sec || 0, at: Date.now() }
 
           if (data.status === 'frame_selected' && data.frame_id) {
-            const frame = frames.find(f => f.id === data.frame_id)
+            const frame = framesRef.current.find(f => f.id === data.frame_id)
             if (frame) {
               selectFrame(frame)
               router.push(`/action?session=${sessionId}`)
@@ -76,16 +95,18 @@ function FrameSelectContent() {
           }
 
           if (data.remaining_sec <= 0 && data.status === 'created') {
-            handleTimeout()
+            handleTimeoutRef.current()
           }
         }
       } catch (err) {
         console.error('Failed to poll session:', err)
+      } finally {
+        polling = false
       }
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [sessionId, frames, pickedFrameId, viewFrameId])
+  }, [sessionId, selectFrame, setSession, router])
 
   const handleSelect = useCallback(async (frame: Frame, selectedBy: 'user' | 'timeout') => {
     if (!frame || !sessionId) return
@@ -117,6 +138,7 @@ function FrameSelectContent() {
       if (frame) handleSelect(frame, 'timeout')
     }
   }, [frames, pickedFrame, viewFrame, sessionId, handleSelect])
+  handleTimeoutRef.current = handleTimeout
 
   if (loading) {
     return (
@@ -150,7 +172,7 @@ function FrameSelectContent() {
                 aria-pressed={pickedFrameId === viewFrame.id}
                 className={`frame-choice fit-item relative ${pickedFrameId === viewFrame.id ? 'frame-choice-picked' : ''}`}
                 style={{ ['--ar' as string]: frameAspect(viewFrame) }}
-                aria-label={`Pilih ${viewFrame.name}`}
+                aria-label={`Pilih frame ${viewIndex + 1}`}
               >
                 <FrameArtwork frame={viewFrame} />
                 {pickedFrameId === viewFrame.id && <span className="frame-picked-badge">✓ Dipilih</span>}
@@ -159,13 +181,14 @@ function FrameSelectContent() {
             <button aria-label="Frame berikutnya" disabled={frames.length < 2} onClick={() => showFrame(viewIndex + 1)} className="carousel-arrow shrink-0 self-center">›</button>
           </div>
           <div className="shrink-0 text-center">
-            <div className="text-xl font-extrabold text-cream">{viewFrame.name}</div>
+            {/* nama/ID frame tidak ditampilkan ke tamu */}
+            {frames.length > 1 && <div className="text-lg font-extrabold text-cream">Frame {viewIndex + 1} dari {frames.length}</div>}
             <div className="text-cream/80">{shotNumbers(viewFrame.layout?.slots || []).length} foto{viewFrame.extra_price > 0 ? ` · +Rp ${viewFrame.extra_price.toLocaleString('id-ID')}` : ''}</div>
             <div className="mt-1 text-lg font-bold text-cream/90">
-              {pickedFrame ? `Frame dipilih: ${pickedFrame.name}` : 'Ketuk frame untuk memilih'}
+              {pickedFrame ? '✓ Frame dipilih' : 'Ketuk frame untuk memilih'}
             </div>
           </div>
-          {frames.length > 1 && <div className="flex shrink-0 gap-3">{frames.map((frame) => <button key={frame.id} aria-label={`Lihat ${frame.name}`} onClick={() => setViewFrameId(frame.id)} className={`h-3 w-3 min-h-0 rounded-full p-0 ${frame.id === viewFrameId ? 'bg-cream' : 'bg-cream/40'}`} />)}</div>}
+          {frames.length > 1 && <div className="flex shrink-0 gap-3">{frames.map((frame, index) => <button key={frame.id} aria-label={`Lihat frame ${index + 1}`} onClick={() => setViewFrameId(frame.id)} className={`h-3 w-3 min-h-0 rounded-full p-0 ${frame.id === viewFrameId ? 'bg-cream' : 'bg-cream/40'}`} />)}</div>}
           {/* aktif hanya setelah tamu mengetuk salah satu frame */}
           <button onClick={() => setConfirmOpen(true)} disabled={!pickedFrame || submitting} className="btn-primary shrink-0 min-w-60 px-10 text-xl">
             Lanjut
@@ -185,7 +208,7 @@ function FrameSelectContent() {
               <FrameArtwork frame={pickedFrame} />
             </div>
             <p className="mb-6 text-char">
-              <span className="font-extrabold">{pickedFrame.name}</span> · {shotNumbers(pickedFrame.layout?.slots || []).length} foto.
+              Frame ini berisi <span className="font-extrabold">{shotNumbers(pickedFrame.layout?.slots || []).length} foto</span>.
               Setelah lanjut, countdown foto langsung dimulai.
             </p>
             <div className="flex justify-center gap-3">

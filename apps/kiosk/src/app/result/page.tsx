@@ -48,7 +48,7 @@ function ResultContent() {
           if (data.qr_url && !qrRendered) {
             qrRendered = true
             const qrData = await QRCode.toDataURL(data.qr_url, {
-              width: 256,
+              width: 512,
               margin: 2,
               color: {
                 dark: '#26211F',
@@ -114,13 +114,14 @@ function ResultContent() {
       {/* landscape: QR | info berdampingan; portrait: ditumpuk. QR diukur dari ruang tersisa */}
       <div className="grid min-h-[320px] flex-1 items-center gap-[clamp(8px,2.5vmin,40px)] portrait:grid-rows-[minmax(0,1fr)_auto] landscape:grid-cols-2">
       <div className="fit-box h-full">
-      <div className="fit-item aspect-square rounded-[28px] bg-cream p-[clamp(10px,2vmin,24px)] shadow-2xl" style={{ ['--ar' as string]: 1, maxWidth: 520 }}>
-          <div className="flex h-full w-full items-center justify-center bg-white">
+      <div className="fit-item relative aspect-square rounded-[28px] bg-cream shadow-2xl" style={{ ['--ar' as string]: 1, maxWidth: 520 }}>
+          {/* inset absolut: ukuran QR selalu terikat ke kotak krem (tinggi % dari aspect-ratio tidak selalu dihitung browser tablet) */}
+          <div className="absolute inset-[clamp(10px,2vmin,24px)] flex items-center justify-center overflow-hidden bg-white">
             {qrDataUrl ? (
-              <img 
-                src={qrDataUrl} 
-                alt="QR Code" 
-                className="w-full h-full object-contain"
+              <img
+                src={qrDataUrl}
+                alt="QR Code"
+                className="block h-full w-full object-contain"
               />
             ) : (
               <div className="text-sm font-bold text-char">Menyiapkan QR...</div>
