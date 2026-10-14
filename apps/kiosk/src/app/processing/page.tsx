@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
 export default function ProcessingPage() {
-  return <Suspense fallback={<main className="flex min-h-screen items-center justify-center text-cream">Memproses hasil...</main>}><ProcessingContent /></Suspense>
+  return <Suspense fallback={<main className="kiosk-page items-center justify-center text-cream">Memproses hasil...</main>}><ProcessingContent /></Suspense>
 }
 
 function ProcessingContent() {
@@ -90,7 +90,7 @@ function ProcessingContent() {
   const outputMode = config?.output_mode || 'photo_only'
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 px-6 py-10 text-center">
+    <main className="kiosk-page items-center justify-center gap-8 text-center">
       <img src="/logo.png" alt="Chamera, Wear your memories" className="w-[min(38vw,250px)] object-contain" />
       <div className="w-full max-w-5xl">
         <div className="mb-4 text-2xl font-extrabold text-cream md:text-4xl">Fotomu sedang diproses</div>

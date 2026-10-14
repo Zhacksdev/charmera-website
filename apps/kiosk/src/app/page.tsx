@@ -43,12 +43,12 @@ export default function HomePage() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-y-auto px-6 py-10 text-center">
+    <main className="kiosk-page items-center justify-center text-center">
       <div className="welcome-content flex w-full flex-col items-center">
         <img
           src="/logo.png"
           alt="Chamera, Wear your memories"
-          className="mb-14 w-[min(72vw,420px)] object-contain drop-shadow-sm"
+          className="mb-[clamp(16px,5vmin,56px)] max-h-[38dvh] w-[min(72vw,420px)] object-contain drop-shadow-sm"
         />
         
         {isChecking && !preflight && (

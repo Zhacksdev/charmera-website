@@ -15,18 +15,24 @@ export function FrameComposite({
   renderSlot,
   customText,
   className = '',
+  fit = false,
 }: {
   frame: Frame
   renderSlot: (shotIndex: number, slot: FrameSlot) => ReactNode
   customText?: string
   className?: string
+  /** di dalam .fit-box: ukuran mengikuti lebar & tinggi ruang yang tersedia */
+  fit?: boolean
 }) {
   const canvas = frame.layout?.canvas || { w: frame.canvas_w, h: frame.canvas_h }
   const slots = frame.layout?.slots || []
   const textArea = frame.layout?.text_area
 
   return (
-    <div className={`frame-composite ${className}`} style={{ aspectRatio: `${canvas.w}/${canvas.h}` }}>
+    <div
+      className={`frame-composite ${fit ? 'fit-item' : ''} ${className}`}
+      style={{ aspectRatio: `${canvas.w}/${canvas.h}`, ['--ar' as string]: canvas.w / canvas.h }}
+    >
       {slots.map((slot, index) => (
         <div
           key={`${slot.n}-${index}`}

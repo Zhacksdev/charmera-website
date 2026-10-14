@@ -11,7 +11,7 @@ import { StageHeader } from '../../components/StageHeader'
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
 export default function FrameSelectPage() {
-  return <Suspense fallback={<main className="flex min-h-screen items-center justify-center text-cream">Memuat pilihan frame...</main>}><FrameSelectContent /></Suspense>
+  return <Suspense fallback={<main className="kiosk-page items-center justify-center text-cream">Memuat pilihan frame...</main>}><FrameSelectContent /></Suspense>
 }
 
 function FrameSelectContent() {
@@ -120,7 +120,7 @@ function FrameSelectContent() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center">
+      <main className="kiosk-page items-center justify-center">
       <div className="text-2xl font-extrabold text-cream">Memuat pilihan frame...</div>
       </main>
     )
@@ -130,40 +130,46 @@ function FrameSelectContent() {
   const showFrame = (index: number) => setViewFrameId(frames[(index + frames.length) % frames.length].id)
 
   return (
-    <main className="relative flex min-h-screen flex-col overflow-y-auto p-5 md:p-8">
+    <main className="kiosk-page gap-[clamp(8px,1.6vmin,20px)]">
       <StageHeader title="Pilih Frame kamu dulu ya" remainingSec={remainingSec} />
 
       {shouldShowReminder && (
-        <div role="status" className="fixed left-1/2 top-24 z-50 -translate-x-1/2 rounded-xl bg-cream px-6 py-3 font-extrabold text-cherry shadow-lg">
+        <div role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-cream px-6 py-3 text-center font-extrabold text-cherry shadow-lg">
           Waktu hampir habis! Pilih frame sekarang.
         </div>
       )}
 
       {viewFrame ? (
-        <section className="flex flex-1 flex-col items-center justify-center gap-4 py-5" aria-label="Pilihan frame">
-          <div className="flex items-center justify-center gap-5 md:gap-12">
-            <button aria-label="Frame sebelumnya" disabled={frames.length < 2} onClick={() => showFrame(viewIndex - 1)} className="carousel-arrow hidden md:flex">‹</button>
-            <button
-              onClick={() => setPickedFrameId(viewFrame.id)}
-              aria-pressed={pickedFrameId === viewFrame.id}
-              className={`frame-choice relative w-[min(54vw,430px)] ${pickedFrameId === viewFrame.id ? 'frame-choice-picked' : ''}`}
-              aria-label={`Pilih ${viewFrame.name}`}
-            >
-              <FrameArtwork frame={viewFrame} />
-              {pickedFrameId === viewFrame.id && <span className="frame-picked-badge">✓ Dipilih</span>}
-              <span className="mt-3 block text-xl font-extrabold text-cream">{viewFrame.name}</span>
-              <span className="mt-1 block text-cream/80">{shotNumbers(viewFrame.layout?.slots || []).length} foto{viewFrame.extra_price > 0 ? ` · +Rp ${viewFrame.extra_price.toLocaleString('id-ID')}` : ''}</span>
-            </button>
-            <button aria-label="Frame berikutnya" disabled={frames.length < 2} onClick={() => showFrame(viewIndex + 1)} className="carousel-arrow hidden md:flex">›</button>
+        <section className="flex min-h-0 flex-1 flex-col items-center gap-[clamp(6px,1.4vmin,16px)]" aria-label="Pilihan frame">
+          {/* frame mengisi ruang tersisa: utuh terlihat di portrait & landscape */}
+          <div className="flex min-h-[240px] w-full flex-1 items-stretch justify-center gap-[clamp(8px,3vw,48px)]">
+            <button aria-label="Frame sebelumnya" disabled={frames.length < 2} onClick={() => showFrame(viewIndex - 1)} className="carousel-arrow shrink-0 self-center">‹</button>
+            <div className="fit-box max-w-[min(100%,720px)]">
+              <button
+                onClick={() => setPickedFrameId(viewFrame.id)}
+                aria-pressed={pickedFrameId === viewFrame.id}
+                className={`frame-choice fit-item relative ${pickedFrameId === viewFrame.id ? 'frame-choice-picked' : ''}`}
+                style={{ ['--ar' as string]: frameAspect(viewFrame) }}
+                aria-label={`Pilih ${viewFrame.name}`}
+              >
+                <FrameArtwork frame={viewFrame} />
+                {pickedFrameId === viewFrame.id && <span className="frame-picked-badge">✓ Dipilih</span>}
+              </button>
+            </div>
+            <button aria-label="Frame berikutnya" disabled={frames.length < 2} onClick={() => showFrame(viewIndex + 1)} className="carousel-arrow shrink-0 self-center">›</button>
           </div>
-          <div className="text-center text-lg font-bold text-cream/90">
-            {pickedFrame ? `Frame dipilih: ${pickedFrame.name}` : 'Ketuk frame untuk memilih'}
+          <div className="shrink-0 text-center">
+            <div className="text-xl font-extrabold text-cream">{viewFrame.name}</div>
+            <div className="text-cream/80">{shotNumbers(viewFrame.layout?.slots || []).length} foto{viewFrame.extra_price > 0 ? ` · +Rp ${viewFrame.extra_price.toLocaleString('id-ID')}` : ''}</div>
+            <div className="mt-1 text-lg font-bold text-cream/90">
+              {pickedFrame ? `Frame dipilih: ${pickedFrame.name}` : 'Ketuk frame untuk memilih'}
+            </div>
           </div>
+          {frames.length > 1 && <div className="flex shrink-0 gap-3">{frames.map((frame) => <button key={frame.id} aria-label={`Lihat ${frame.name}`} onClick={() => setViewFrameId(frame.id)} className={`h-3 w-3 min-h-0 rounded-full p-0 ${frame.id === viewFrameId ? 'bg-cream' : 'bg-cream/40'}`} />)}</div>}
           {/* aktif hanya setelah tamu mengetuk salah satu frame */}
-          <button onClick={() => setConfirmOpen(true)} disabled={!pickedFrame || submitting} className="btn-primary min-w-60 px-10 text-xl">
+          <button onClick={() => setConfirmOpen(true)} disabled={!pickedFrame || submitting} className="btn-primary shrink-0 min-w-60 px-10 text-xl">
             Lanjut
           </button>
-          {frames.length > 1 && <div className="flex gap-3 md:hidden">{frames.map((frame) => <button key={frame.id} aria-label={`Lihat ${frame.name}`} onClick={() => setViewFrameId(frame.id)} className={`h-3 w-3 min-h-0 rounded-full p-0 ${frame.id === viewFrameId ? 'bg-cream' : 'bg-cream/40'}`} />)}</div>}
         </section>
       ) : (
         <div className="flex flex-1 items-center justify-center text-xl font-bold text-cream">
@@ -173,9 +179,9 @@ function FrameSelectContent() {
 
       {confirmOpen && pickedFrame && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-char/70 p-6" role="dialog" aria-modal="true" aria-labelledby="confirm-frame-title">
-          <div className="w-full max-w-md rounded-[24px] bg-cream p-6 text-center shadow-2xl">
+          <div className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-[24px] bg-cream p-6 text-center shadow-2xl">
             <h2 id="confirm-frame-title" className="mb-4 text-2xl font-extrabold text-cherry">Pakai frame ini?</h2>
-            <div className="mx-auto mb-4 w-[min(50vw,220px)]">
+            <div className="mx-auto mb-4 w-[min(50vw,220px,22dvh)]">
               <FrameArtwork frame={pickedFrame} />
             </div>
             <p className="mb-6 text-char">
@@ -193,6 +199,11 @@ function FrameSelectContent() {
       )}
     </main>
   )
+}
+
+function frameAspect(frame: Frame): number {
+  const canvas = frame.layout?.canvas || { w: frame.canvas_w, h: frame.canvas_h }
+  return canvas.w / canvas.h
 }
 
 function FrameArtwork({ frame }: { frame: Frame }) {

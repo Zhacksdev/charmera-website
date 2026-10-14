@@ -146,7 +146,7 @@ export default function OperatorPage() {
 
   if (!authenticated) {
     return (
-      <main className="flex flex-col items-center justify-center min-h-screen p-8">
+      <main className="kiosk-page items-center justify-center">
         <div className="card max-w-sm w-full p-6">
           <h1 className="text-3xl font-display italic text-cherry mb-6 text-center">
             Operator Panel
@@ -180,7 +180,7 @@ export default function OperatorPage() {
   const savedMissing = !!form?.printer_name && !printer?.printers.some((p) => p.name === form.printer_name)
 
   return (
-    <main className="h-screen overflow-y-auto p-5 md:p-8">
+    <main className="kiosk-page">
       <div className="max-w-2xl mx-auto w-full space-y-5 pb-10">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-display italic text-cream">

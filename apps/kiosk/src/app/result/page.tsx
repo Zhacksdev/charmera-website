@@ -11,7 +11,7 @@ const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 const QR_TIMER = 15
 
 export default function ResultPage() {
-  return <Suspense fallback={<main className="flex min-h-screen items-center justify-center text-cream">Menyiapkan QR...</main>}><ResultContent /></Suspense>
+  return <Suspense fallback={<main className="kiosk-page items-center justify-center text-cream">Menyiapkan QR...</main>}><ResultContent /></Suspense>
 }
 
 function ResultContent() {
@@ -107,15 +107,15 @@ function ResultContent() {
   }, [remainingSec, router, sessionId])
 
   return (
-    <main className="relative flex min-h-screen flex-col overflow-y-auto p-5 md:p-8">
-      {/* header sama dengan halaman Frame/Action/Preview: timer di kiri atas */}
+    <main className="kiosk-page gap-[clamp(6px,1.4vmin,16px)]">
+      {/* header sama dengan halaman Frame/Action/Preview: timer di kanan atas */}
       <StageHeader title="Soft file fotomu sudah siap" remainingSec={remainingSec} />
 
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 py-5 text-center">
-      <img src="/logo.png" alt="Chamera, Wear your memories" className="w-[min(30vw,180px)] object-contain" />
-
-      <div className="rounded-[28px] bg-cream p-6 shadow-2xl">
-          <div className="flex h-[min(58vw,360px)] w-[min(58vw,360px)] items-center justify-center bg-white">
+      {/* landscape: QR | info berdampingan; portrait: ditumpuk. QR diukur dari ruang tersisa */}
+      <div className="grid min-h-[320px] flex-1 items-center gap-[clamp(8px,2.5vmin,40px)] portrait:grid-rows-[minmax(0,1fr)_auto] landscape:grid-cols-2">
+      <div className="fit-box h-full">
+      <div className="fit-item aspect-square rounded-[28px] bg-cream p-[clamp(10px,2vmin,24px)] shadow-2xl" style={{ ['--ar' as string]: 1, maxWidth: 520 }}>
+          <div className="flex h-full w-full items-center justify-center bg-white">
             {qrDataUrl ? (
               <img 
                 src={qrDataUrl} 
@@ -127,7 +127,10 @@ function ResultContent() {
             )}
           </div>
       </div>
+      </div>
 
+      <div className="flex flex-col items-center justify-center gap-[clamp(8px,2vmin,24px)] text-center">
+      <img src="/logo.png" alt="Chamera, Wear your memories" className="w-[min(30vw,200px)] object-contain portrait:hidden" />
       <div className="max-w-xl text-xl font-extrabold text-cream md:text-3xl">Scan QR untuk mengunduh hasil fotomu</div>
 
       {sessionFailed ? (
@@ -163,6 +166,7 @@ function ResultContent() {
       )}
 
       {printError && <div className="text-sm text-butter">{printError}</div>}
+      </div>
       </div>
     </main>
   )

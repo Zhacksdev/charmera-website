@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useKioskStore } from '../../stores/kioskStore'
-import { useCamera, useClipRecorder, useStageTimer } from '../../hooks'
+import { useCamera, useClipRecorder, useStageTimer, useSessionFrame } from '../../hooks'
 import { FrameComposite } from '../../components/FrameComposite'
 import { shotNumbers } from '../../lib/frame-layout'
 import { enqueueUpload, useUploadStates } from '../../lib/upload-queue'
@@ -17,7 +17,7 @@ const FIRST_SHOT_DELAY_MS = 800
 const NEXT_SHOT_DELAY_MS = 1500
 
 export default function ActionPage() {
-  return <Suspense fallback={<main className="flex min-h-screen items-center justify-center text-cream">Menyiapkan kamera...</main>}><ActionContent /></Suspense>
+  return <Suspense fallback={<main className="kiosk-page items-center justify-center text-cream">Menyiapkan kamera...</main>}><ActionContent /></Suspense>
 }
 
 function ActionContent() {
@@ -25,7 +25,8 @@ function ActionContent() {
   const searchParams = useSearchParams()
   const sessionId = searchParams.get('session')
 
-  const { selectedFrame, photos, setPhoto, setSession, customText, setCustomText } = useKioskStore()
+  const { photos, setPhoto, setSession, customText, setCustomText } = useKioskStore()
+  const selectedFrame = useSessionFrame(sessionId)
 
   const { videoRef, isReady, error: cameraError, startCamera, stopCamera, capturePhoto } = useCamera({
     width: 1920,
@@ -270,7 +271,7 @@ function ActionContent() {
 
   if (cameraError) {
     return (
-      <main className="flex flex-col items-center justify-center min-h-screen p-8">
+      <main className="kiosk-page items-center justify-center text-center">
         <div role="alert" className="mb-4 text-2xl font-extrabold text-cream">Kamera belum siap</div>
         <div className="mb-6 text-cream/80">{cameraError}</div>
         <button
@@ -294,9 +295,9 @@ function ActionContent() {
         : nextShot === 0 ? 'Bersiap, countdown dimulai...' : `Ganti gaya! Foto ${nextShot + 1} sebentar lagi`
 
   return (
-    <main className="relative flex min-h-screen flex-col overflow-y-auto p-5 md:p-8">
+    <main className="kiosk-page gap-[clamp(6px,1.4vmin,16px)]">
       <StageHeader title="Saatnya berekspresi!" remainingSec={remainingSec} />
-      <div className="mt-2 text-center text-base font-bold text-cream/90" role="status">{statusText}{retakeCount > 0 ? ` · Retake ${retakeCount}/${maxRetake}` : ''}</div>
+      <div className="shrink-0 text-center text-base font-bold text-cream/90" role="status">{statusText}{retakeCount > 0 ? ` · Retake ${retakeCount}/${maxRetake}` : ''}</div>
 
       {showReminder && !isCapturing && (
         <div className="reminder-banner">
@@ -304,9 +305,11 @@ function ActionContent() {
         </div>
       )}
 
-      <div className="grid flex-1 grid-cols-1 items-center gap-6 py-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)] lg:gap-12">
-        <div className="mx-auto w-full max-w-[min(42vh,340px)] lg:max-w-[440px]">
+      {/* landscape: frame | kamera berdampingan; portrait: ditumpuk. Keduanya utuh dalam satu layar */}
+      <div className="grid min-h-[320px] flex-1 gap-[clamp(8px,2vmin,32px)] portrait:grid-rows-[minmax(0,1fr)_minmax(0,1fr)] landscape:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+        <div className="fit-box">
           {selectedFrame && <FrameComposite
+            fit
             frame={selectedFrame}
             customText={customText}
             renderSlot={(shotIndex) => {
@@ -328,7 +331,8 @@ function ActionContent() {
             }}
           />}
         </div>
-        <div className="relative mx-auto aspect-[4/3] w-full max-w-2xl overflow-hidden rounded-[24px] border-4 border-cream bg-char shadow-xl">
+        <div className="fit-box">
+        <div className="fit-item relative aspect-[4/3] overflow-hidden rounded-[24px] border-4 border-cream bg-char shadow-xl" style={{ ['--ar' as string]: 4 / 3 }}>
           <video
             ref={videoRef}
             autoPlay
@@ -359,10 +363,11 @@ function ActionContent() {
           )}
           {!isReady && !cameraError && <div className="absolute inset-0 flex items-center justify-center bg-char/80 text-lg font-bold text-cream">Menyiapkan kamera...</div>}
         </div>
+        </div>
       </div>
 
       {/* tidak ada tombol ambil foto: urutan berjalan otomatis; tombol hanya muncul setelah semua foto */}
-      <div className="flex flex-wrap justify-center gap-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-center gap-3">
         {failedShots.map((slotIndex) => (
           <button key={slotIndex} onClick={() => handleRetake(slotIndex)} disabled={isCapturing} className="btn-secondary min-w-40 text-lg">
             Ambil ulang foto {slotIndex + 1}
@@ -395,22 +400,24 @@ function ActionContent() {
         )}
       </div>
 
-      {captureError && <div role="alert" className="mx-auto mt-3 max-w-xl rounded-lg bg-cream px-4 py-3 text-center font-bold text-cherry">{captureError}</div>}
+      {captureError && <div role="alert" className="mx-auto max-w-xl shrink-0 rounded-lg bg-cream px-4 py-3 text-center font-bold text-cherry">{captureError}</div>}
 
       {/* hanya bila admin menandai area custom text di frame ini */}
       {selectedFrame?.layout?.text_area && (
-        <div className="mx-auto mt-4 w-full max-w-xl">
-          <label htmlFor="custom-text" className="mb-2 block text-center text-xl font-extrabold text-cream">Custom textnya di sini ya!</label>
-          <input
-            id="custom-text"
-            type="text"
-            value={customText}
-            onChange={(e) => handleCustomText(e.target.value)}
-            placeholder="Tulis pesan pendek..."
-            maxLength={30}
-            className="w-full rounded-xl border-0 bg-cream px-5 py-4 text-center text-lg font-bold text-cherry placeholder:text-cherry/55 focus:outline focus:outline-4 focus:outline-butter"
-          />
-          <div className="mt-1 text-right text-sm text-cream/75">{customText.length}/30</div>
+        <div className="mx-auto flex w-full max-w-2xl shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1">
+          <label htmlFor="custom-text" className="text-lg font-extrabold text-cream">Custom textnya di sini ya!</label>
+          <div className="relative min-w-[14rem] flex-1">
+            <input
+              id="custom-text"
+              type="text"
+              value={customText}
+              onChange={(e) => handleCustomText(e.target.value)}
+              placeholder="Tulis pesan pendek..."
+              maxLength={30}
+              className="w-full rounded-xl border-0 bg-cream py-3 pl-4 pr-14 text-center text-lg font-bold text-cherry placeholder:text-cherry/55 focus:outline focus:outline-4 focus:outline-butter"
+            />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-cherry/60">{customText.length}/30</span>
+          </div>
         </div>
       )}
     </main>

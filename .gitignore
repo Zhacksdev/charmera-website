@@ -5,6 +5,8 @@ node_modules
 # Build outputs
 dist
 .next
+# folder build uji (NEXT_DIST_DIR) — lihat apps/kiosk/next.config.ts
+.next-*
 out
 build
 *.tsbuildinfo

@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useKioskStore } from '../../stores/kioskStore'
-import { useStageTimer } from '../../hooks'
+import { useStageTimer, useSessionFrame } from '../../hooks'
 import { FrameComposite } from '../../components/FrameComposite'
 import { PHOTO_FILTER_OPTIONS, filterCss, type PhotoFilter } from '../../lib/photo-filters'
 import { useUploadStates, waitForUploads } from '../../lib/upload-queue'
@@ -13,7 +13,7 @@ import { StageHeader } from '../../components/StageHeader'
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
 
 export default function PreviewPage() {
-  return <Suspense fallback={<main className="flex min-h-screen items-center justify-center text-cream">Menyiapkan preview...</main>}><PreviewContent /></Suspense>
+  return <Suspense fallback={<main className="kiosk-page items-center justify-center text-cream">Menyiapkan preview...</main>}><PreviewContent /></Suspense>
 }
 
 function PreviewContent() {
@@ -21,7 +21,8 @@ function PreviewContent() {
   const searchParams = useSearchParams()
   const sessionId = searchParams.get('session')
   
-  const { selectedFrame, photos, customText } = useKioskStore()
+  const { photos, customText } = useKioskStore()
+  const selectedFrame = useSessionFrame(sessionId)
   const [loading, setLoading] = useState(false)
   const [config, setConfig] = useState<any>(null)
   const [filter, setFilter] = useState<PhotoFilter>('none')
@@ -104,17 +105,18 @@ function PreviewContent() {
   const capturedPhotos = Array.from(photos.values()).sort((first, second) => first.slot_index - second.slot_index)
 
   return (
-    <main className="relative flex min-h-screen flex-col overflow-y-auto p-5 md:p-8">
+    <main className="kiosk-page gap-[clamp(6px,1.4vmin,16px)]">
       <StageHeader title="Hasil fotomu!" remainingSec={remainingSec} />
 
-      <div className="grid flex-1 grid-cols-1 items-center gap-5 py-5 md:grid-cols-3 md:gap-8">
+      {/* tiga pratinjau berdampingan, masing-masing diukur dari ruang tersisa (utuh di tablet & desktop) */}
+      <div className="grid min-h-[300px] flex-1 auto-cols-fr grid-flow-col gap-[clamp(8px,2.5vmin,40px)]">
         <OutputPreview title="Foto Strip" photos={capturedPhotos} frame={selectedFrame} customText={customText} filter={filter} />
         {outputMode === 'full' && <OutputPreview title="GIF" photos={capturedPhotos} frame={selectedFrame} customText={customText} filter={filter} variant="gif" />}
         {outputMode === 'full' && <OutputPreview title="Live Photo" photos={capturedPhotos} frame={selectedFrame} customText={customText} filter={filter} variant="live" />}
       </div>
 
       {/* filter berlaku untuk semua hasil (strip, GIF, Live); frame tetap warna asli */}
-      <div className="mb-4 flex flex-col items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-2">
         <div className="text-lg font-extrabold text-cream">Pilih filter</div>
         <div className="flex flex-wrap justify-center gap-2" role="radiogroup" aria-label="Filter foto">
           {PHOTO_FILTER_OPTIONS.map((option) => (
@@ -133,11 +135,11 @@ function PreviewContent() {
         </div>
       </div>
 
-      <div className="flex justify-center pb-2">
+      <div className="flex shrink-0 justify-center">
         <button
           onClick={handleFinalize}
           disabled={loading}
-          className="btn-primary min-h-20 min-w-80 px-10 text-2xl shadow-xl"
+          className="btn-primary min-w-[min(80vw,20rem)] px-10 text-2xl shadow-xl"
         >
           {loading ? (uploadsPending ? 'Mengirim foto...' : 'Menyiapkan hasil...') : showPrintButton ? 'Print sekarang' : 'Lanjut'}
         </button>
@@ -173,12 +175,14 @@ function OutputPreview({
   const style = { filter: filterCss(filter) }
 
   return (
-    <section className="mx-auto flex w-full max-w-[340px] flex-col items-center" aria-label={title}>
-      <h2 className="mb-2 text-center text-2xl font-extrabold text-cream">{title}</h2>
+    <section className="flex min-h-0 min-w-0 flex-col items-center" aria-label={title}>
+      <h2 className="mb-2 shrink-0 text-center text-2xl font-extrabold text-cream">{title}</h2>
+      <div className="fit-box">
       {variant === 'gif' ? (
         <GifPreview photos={photos} filter={filter} />
       ) : frame ? (
         <FrameComposite
+          fit
           frame={frame}
           customText={customText}
           renderSlot={(shotIndex) => {
@@ -191,13 +195,14 @@ function OutputPreview({
           }}
         />
       ) : null}
+      </div>
     </section>
   )
 }
 
 function GifPreview({ photos, filter }: { photos: CapturedPhoto[]; filter: PhotoFilter }) {
   const [index, setIndex] = useState(0)
-  const [aspect, setAspect] = useState('9/16')
+  const [aspect, setAspect] = useState(9 / 16)
 
   useEffect(() => {
     if (photos.length < 2) return
@@ -207,7 +212,7 @@ function GifPreview({ photos, filter }: { photos: CapturedPhoto[]; filter: Photo
 
   const photo = photos[index % Math.max(1, photos.length)]
   return (
-    <div className="gif-preview" style={{ aspectRatio: aspect }}>
+    <div className="gif-preview fit-item" style={{ aspectRatio: aspect, ['--ar' as string]: aspect }}>
       {photo && (
         <img
           src={photo.dataUrl}
@@ -216,7 +221,7 @@ function GifPreview({ photos, filter }: { photos: CapturedPhoto[]; filter: Photo
           // GIF mengikuti rasio foto kamera (foto pertama)
           onLoad={(event) => {
             const { naturalWidth, naturalHeight } = event.currentTarget
-            if (index === 0 && naturalWidth && naturalHeight) setAspect(`${naturalWidth}/${naturalHeight}`)
+            if (index === 0 && naturalWidth && naturalHeight) setAspect(naturalWidth / naturalHeight)
           }}
         />
       )}

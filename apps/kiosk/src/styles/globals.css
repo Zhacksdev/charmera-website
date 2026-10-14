@@ -46,6 +46,54 @@ body {
   color: var(--cream);
 }
 
+/*
+ * Responsif tablet → desktop tanpa zoom: semua ukuran Tailwind memakai rem, jadi ukuran dasar
+ * mengikuti sisi terpendek layar (iPad 768 → 14px, 1080p → ±17px, 1440p → 22px).
+ */
+html {
+  font-size: clamp(14px, 1.6vmin, 22px);
+}
+
+/* satu halaman = tepat satu layar; bila konten tetap lebih tinggi (ponsel), halaman itu sendiri yang scroll */
+.kiosk-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: clamp(12px, 2.4vmin, 32px);
+}
+
+.stage-title {
+  font-size: clamp(1.25rem, 3.6vmin, 3.25rem);
+  line-height: 1.1;
+}
+
+/*
+ * Kotak yang mengisi ruang tersisa; isinya (frame/kamera/QR) diukur dari lebar DAN tinggi kotak
+ * (container query) sehingga selalu utuh terlihat, di portrait maupun landscape.
+ */
+.fit-box {
+  container-type: size;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --ar = rasio lebar/tinggi isi (selektor ganda: menang atas width:100% milik .frame-composite) */
+.fit-item,
+.frame-composite.fit-item,
+.gif-preview.fit-item {
+  width: min(100cqw, calc(100cqh * var(--ar, 1)));
+  flex: none;
+}
+
 .kiosk-shell {
   color: var(--cream);
 }
@@ -56,7 +104,8 @@ body {
 }
 
 button {
-  min-height: 64px;
+  /* target sentuh tetap besar di tablet, tidak berlebihan di layar pendek */
+  min-height: clamp(48px, 7vmin, 72px);
   font-weight: 800;
   border-radius: 12px;
   border: none;
@@ -114,13 +163,13 @@ button:disabled {
 }
 
 .carousel-arrow {
-  width: 72px;
-  min-height: 72px;
+  width: clamp(40px, 6vmin, 72px);
+  min-height: clamp(40px, 6vmin, 72px);
   align-items: center;
   justify-content: center;
   background: transparent;
   color: var(--cream);
-  font-size: 5rem;
+  font-size: clamp(2.5rem, 7vmin, 5rem);
   font-weight: 400;
   line-height: 1;
 }
@@ -222,8 +271,8 @@ button:disabled {
 }
 
 .filter-chip img {
-  width: 64px;
-  height: 64px;
+  width: clamp(40px, 7vmin, 72px);
+  height: clamp(40px, 7vmin, 72px);
   border-radius: 10px;
   object-fit: cover;
 }
@@ -452,15 +501,16 @@ button:disabled {
 }
 
 .countdown-number {
-  font-size: 8rem;
+  font-size: clamp(4rem, 16vmin, 11rem);
   font-weight: bold;
   color: white;
   animation: pulse 1s ease-in-out;
 }
 
 .reminder-banner {
+  /* di bawah agar tidak menutupi judul & timer */
   position: fixed;
-  top: 1rem;
+  bottom: 1.5rem;
   left: 50%;
   transform: translateX(-50%);
   background: var(--cherry);
