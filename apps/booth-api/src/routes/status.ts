@@ -3,7 +3,7 @@ import { statfs } from 'fs/promises'
 import { join } from 'path'
 import { db } from '../db/index.js'
 import { getConfig } from '../services/config.js'
-import { getPrinterHealth } from '../services/printer.js'
+import { getPrinterHealth, getPrinterSettings } from '../services/printer.js'
 import { isFfmpegAvailable } from '../services/ffmpeg.js'
 
 const router = Router()
@@ -51,7 +51,10 @@ router.get('/', async (req, res) => {
       config_loaded: !!config,
       config_version: config?.config_version || 0,
       output_mode: config?.output_mode || 'photo_only',
-      print_mode: config?.print_mode || 'digital_only',
+      // pengaturan efektif (cloud + override panel operator), sama dengan yang dipakai print worker
+      print_mode: getPrinterSettings().print_mode,
+      // admin: tampilkan preview cetak sebelum job masuk antrean
+      print_debug: (config as any)?.print_debug === true,
       printer,
       ffmpeg_ok: ffmpeg,
       preflight: preflightResult,

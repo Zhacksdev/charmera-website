@@ -21,6 +21,9 @@ export default function PrinterPage() {
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  // null = kolom print_debug belum ada (migrasi 20260101000003 belum dijalankan)
+  const [printDebug, setPrintDebug] = useState<boolean | null>(null)
+  const [savingDebug, setSavingDebug] = useState(false)
 
   useEffect(() => {
     async function fetchPrinter() {
@@ -35,6 +38,7 @@ export default function PrinterPage() {
             media_warn_at: data.media_warn_at || 10,
             copies: data.copies || 1
           })
+          setPrintDebug(typeof data.print_debug === 'boolean' ? data.print_debug : null)
         }
       } catch (err) {
         console.error('Failed to fetch printer settings:', err)
@@ -59,6 +63,22 @@ export default function PrinterPage() {
       alert(`Gagal menyimpan: ${errorMessage(err, 'unknown')}`)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleToggleDebug = async () => {
+    const next = !printDebug
+    setSavingDebug(true)
+    try {
+      await adminSend('/api/admin/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ print_debug: next })
+      })
+      setPrintDebug(next)
+    } catch (err) {
+      alert(`Gagal mengubah mode debug cetak: ${errorMessage(err, 'unknown')}`)
+    } finally {
+      setSavingDebug(false)
     }
   }
 
@@ -150,6 +170,34 @@ export default function PrinterPage() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* debug cetak: kiosk menampilkan preview halaman cetak (kertas + posisi foto) sebelum job masuk antrean */}
+      <div className="card max-w-md mt-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="font-bold">Mode debug cetak</h2>
+            <p className="text-sm text-char opacity-75">
+              Saat aktif, tombol Print di kiosk menampilkan preview cetak dulu. Job baru masuk antrean setelah
+              operator/tamu menekan Cetak. Pakai saat menyetel printer, matikan saat event.
+            </p>
+          </div>
+          <button
+            role="switch"
+            aria-checked={printDebug === true}
+            onClick={handleToggleDebug}
+            disabled={savingDebug || printDebug === null}
+            className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${printDebug ? 'bg-cherry text-cream' : 'bg-line text-char'}`}
+          >
+            {printDebug ? 'Aktif' : 'Nonaktif'}
+          </button>
+        </div>
+        {printDebug === null && (
+          <p className="mt-3 text-sm text-cherry">
+            Kolom print_debug belum ada di database. Jalankan supabase/migrations/20260101000003_print_debug.sql di SQL Editor Supabase.
+          </p>
+        )}
+        <p className="mt-3 text-xs text-char opacity-60">Berlaku di booth ±1 menit setelah diubah.</p>
       </div>
     </div>
   )

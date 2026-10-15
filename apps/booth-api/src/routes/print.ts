@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { db } from '../db/index.js'
 import { logger } from '../services/logger.js'
-import { getPrinterSettings } from '../services/printer.js'
+import { getPrinterSettings, getPrinterHealth, renderPrintPreview } from '../services/printer.js'
 
 const router = Router({ mergeParams: true })
 
@@ -30,6 +30,47 @@ router.get('/:sessionId/print', (req, res) => {
   } catch (err) {
     logger.error({ err }, 'Failed to get print status')
     res.status(500).json({ error: 'Failed to get print status' })
+  }
+})
+
+// Mode debug cetak: preview halaman cetak sesi (kertas + posisi foto) sebelum job masuk antrean.
+// Strip biasanya sudah dirender sejak Preview dibuka; bila belum (mis. filter baru diganti), tunggu.
+const PREVIEW_WAIT_MS = 45000
+
+router.get('/:sessionId/print-preview', async (req, res) => {
+  try {
+    const { sessionId } = req.params
+    const session = db.prepare('SELECT id FROM sessions WHERE id = ?').get(sessionId)
+    if (!session) return res.status(404).json({ error: 'Session not found' })
+
+    const deadline = Date.now() + PREVIEW_WAIT_MS
+    let strip: { path: string } | undefined
+    while (!(strip = db.prepare(`SELECT path FROM outputs WHERE session_id = ? AND type = 'strip' AND status = 'done'`).get(sessionId) as any)) {
+      const job = db.prepare(`SELECT status, error_message FROM render_jobs WHERE session_id = ? AND type = 'strip'`).get(sessionId) as { status: string; error_message?: string } | undefined
+      if (job?.status === 'failed') return res.status(500).json({ error: `Render strip gagal: ${job.error_message || 'unknown'}` })
+      if (Date.now() > deadline) return res.status(504).json({ error: 'Strip belum selesai dirender' })
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+
+    const settings = getPrinterSettings()
+    const [{ png, layout }, health] = await Promise.all([renderPrintPreview(strip.path, settings), getPrinterHealth(settings)])
+    res.json({
+      image: `data:image/png;base64,${png.toString('base64')}`,
+      layout,
+      settings: {
+        printer_name: settings.printer_name || '(default OS)',
+        paper_size: settings.paper_size || '(default driver)',
+        print_scale: settings.print_scale,
+        scale_pct: settings.scale_pct,
+        offset_x_mm: settings.offset_x_mm,
+        offset_y_mm: settings.offset_y_mm,
+        copies: settings.copies
+      },
+      health
+    })
+  } catch (err) {
+    logger.error({ err }, 'Failed to build print preview')
+    res.status(500).json({ error: 'Gagal membuat preview cetak' })
   }
 })
 

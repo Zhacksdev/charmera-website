@@ -12,6 +12,9 @@ interface PrinterSettings {
   copies: number
   print_scale: PrintScale
   paper_size: string
+  scale_pct: number
+  offset_x_mm: number
+  offset_y_mm: number
 }
 
 interface PrinterInfo {
@@ -47,7 +50,8 @@ export default function OperatorPage() {
   const [printer, setPrinter] = useState<PrinterState | null>(null)
   const [form, setForm] = useState<PrinterSettings | null>(null)
   const [loading, setLoading] = useState(false)
-  const [busy, setBusy] = useState<'save' | 'test' | 'refresh' | 'sync' | null>(null)
+  const [busy, setBusy] = useState<'save' | 'test' | 'refresh' | 'sync' | 'preview' | null>(null)
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null)
 
   const operatorFetch = (path: string, init: RequestInit = {}) =>
@@ -128,6 +132,23 @@ export default function OperatorPage() {
         : { ok: false, text: data.error || 'Test print gagal' })
     } catch {
       setNotice({ ok: false, text: 'Booth API tidak terjangkau' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // halaman uji dengan pengaturan di form (belum disimpan) — setel geser/skala tanpa membuang kertas
+  const handlePreview = async () => {
+    if (!form) return
+    setBusy('preview')
+    setNotice(null)
+    try {
+      const res = await operatorFetch('/print-preview', { method: 'POST', body: JSON.stringify(form) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      setPreviewImage(data.image)
+    } catch (err: any) {
+      setNotice({ ok: false, text: err.message || 'Preview gagal' })
     } finally {
       setBusy(null)
     }
@@ -287,26 +308,69 @@ export default function OperatorPage() {
                   className="w-full rounded-lg border border-line bg-white px-3 py-3"
                 />
                 <datalist id="paper-sizes">
-                  <option value="A4" />
-                  <option value="A5" />
+                  <option value="4x6">Foto 4R (10,16 × 15,24 cm)</option>
+                  <option value="10x15">10 × 15 cm</option>
+                  <option value="5x7">5R</option>
                   <option value="A6" />
+                  <option value="A5" />
+                  <option value="A4" />
                   <option value="letter" />
                 </datalist>
               </label>
             </div>
             <p className="text-sm opacity-75">
-              Untuk kertas 4R/10x15, biarkan ukuran kertas kosong dan atur kertas default di driver printer (Settings → Printers → Printing preferences).
+              Pilih ukuran kertas dari daftar (4x6, 10x15, 5x7, A6, A5, A4, letter) agar booth sendiri yang menempatkan foto di kertas,
+              sehingga hasil cetak sama dengan preview. Kosong = posisi diserahkan ke driver printer.
             </p>
+
+            {/* penyesuaian bila hasil cetak terpotong / tidak di tengah */}
+            <fieldset>
+              <legend className="mb-2 text-sm font-bold">Penyesuaian posisi</legend>
+              <div className="grid grid-cols-3 gap-3">
+                {([
+                  ['scale_pct', 'Skala (%)', 50, 150, 1],
+                  ['offset_x_mm', 'Geser kanan (mm)', -50, 50, 0.5],
+                  ['offset_y_mm', 'Geser bawah (mm)', -50, 50, 0.5],
+                ] as const).map(([key, label, min, max, step]) => (
+                  <label key={key} className="block">
+                    <span className="mb-1 block text-xs font-bold">{label}</span>
+                    <input
+                      type="number"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={form[key]}
+                      onChange={(e) => {
+                        const value = Number(e.target.value)
+                        setForm({ ...form, [key]: Number.isFinite(value) ? Math.min(max, Math.max(min, key === 'scale_pct' ? Math.round(value) : value)) : form[key] })
+                      }}
+                      className="w-full rounded-lg border border-line bg-white px-3 py-3"
+                    />
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-sm opacity-75">Nilai minus menggeser ke kiri/atas. Foto keluar kertas di sisi kanan? Isi geser kanan negatif, mis. -8.</p>
+            </fieldset>
 
             <div className="flex flex-wrap gap-3">
               <button onClick={handleSave} disabled={!!busy} className="btn-primary border border-line disabled:opacity-50">
                 {busy === 'save' ? 'Menyimpan...' : 'Simpan'}
               </button>
+              <button onClick={handlePreview} disabled={!!busy} className="btn-secondary disabled:opacity-50">
+                {busy === 'preview' ? 'Memuat...' : 'Preview'}
+              </button>
               <button onClick={handleTestPrint} disabled={!!busy} className="btn-secondary disabled:opacity-50">
                 {busy === 'test' ? 'Mengirim...' : 'Test Print'}
               </button>
             </div>
-            <p className="text-sm opacity-75">Test Print memakai pengaturan yang sudah disimpan.</p>
+            <p className="text-sm opacity-75">Preview memakai isian form (belum perlu disimpan). Test Print memakai pengaturan yang sudah disimpan.</p>
+
+            {previewImage && (
+              <figure className="rounded-xl bg-line/40 p-3 text-center">
+                <img src={previewImage} alt="Preview halaman uji di kertas" className="mx-auto max-h-[60dvh] w-auto max-w-full shadow-lg" />
+                <figcaption className="mt-2 text-xs opacity-75">Garis hitam = tepi kertas · merah = tepi foto · biru putus-putus = 5 mm dari tepi kertas</figcaption>
+              </figure>
+            )}
           </section>
         )}
 

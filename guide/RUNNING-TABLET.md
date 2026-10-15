@@ -113,9 +113,22 @@ Lalu, di tablet:
      | Ukuran asli 4x6 | Printer foto 4R. Di kertas A4, foto tercetak 10x15 cm untuk dipotong. |
      | Sesuaikan kertas | Tepi foto terpotong, atau ingin foto memenuhi kertas lain. |
      | Perkecil bila perlu | Ukuran asli, tetapi diperkecil bila area cetak printer lebih kecil. |
-   - **Jumlah salinan** dan **ukuran kertas**: kosongkan ukuran kertas agar mengikuti setelan driver.
-3. Tekan **Simpan**, lalu **Test Print**. Halaman uji punya garis merah di tepi foto dan garis putus-putus 5 mm dari tepi: pakai untuk mengecek apakah ada yang terpotong.
-4. Pengaturan tersimpan di laptop dan berlaku mulai sesi berikutnya.
+   - **Jumlah salinan**.
+   - **Ukuran kertas**: pilih dari daftar (`4x6`, `10x15`, `5x7`, `A6`, `A5`, `A4`, `letter`). Booth lalu membuat halaman seukuran kertas itu dan menempatkan foto sendiri, sehingga hasil cetak sama dengan preview. Kosong = posisi foto diserahkan ke driver printer.
+   - **Penyesuaian posisi**: *Skala (%)*, *Geser kanan (mm)*, *Geser bawah (mm)*. Nilai minus menggeser ke kiri/atas.
+3. Tekan **Preview** untuk melihat halaman uji di atas kertas dengan isian form (belum perlu disimpan, tidak mencetak). Garis hitam = tepi kertas, merah = tepi foto, biru putus-putus = 5 mm dari tepi kertas.
+4. Tekan **Simpan**, lalu **Test Print**, dan bandingkan hasil cetak dengan preview.
+5. Pengaturan tersimpan di laptop dan berlaku mulai sesi berikutnya.
+
+#### Hasil cetak terpotong / tidak di tengah
+
+Biasanya ukuran kertas di driver tidak sama dengan kertas yang dimasukkan, mis. kertas 4R di printer A4 (Epson L-series) yang driver-nya masih **A4**: foto bergeser ke kiri/atas dan sebagian keluar kertas.
+
+1. **Paling mudah**: Windows → Printers → (printer) → **Printing preferences** → Paper Size **10 x 15 cm (4 x 6 in)**, jenis kertas foto, lalu di panel operator pilih ukuran kertas `4x6`.
+2. **Bila driver tetap A4**: pilih ukuran kertas `A4` di panel operator, lalu atur *Geser kanan/bawah* sampai kotak merah di **Preview** berada di posisi kertas 4R di printer (lihat pengarah kertas printer). Cek dengan Test Print.
+3. Aktifkan **Mode debug cetak** di admin → Printer selama menyetel: setiap tombol Print di kiosk menampilkan preview halaman cetak dulu, lalu pilih **Cetak** atau **Lewati cetak**. Matikan lagi saat event.
+
+Mode debug cetak butuh kolom baru di database cloud: jalankan sekali `supabase/migrations/20260101000003_print_debug.sql` di SQL Editor Supabase.
 
 ### B4. Kunci tablet ke mode kiosk
 

@@ -43,6 +43,8 @@ export interface Config {
     codec: 'h265' | 'h264'
     preview_h264: boolean
   }
+  /** admin: preview cetak di kiosk sebelum job masuk antrean */
+  print_debug?: boolean
   gif_config?: {
     frame_duration_ms: number
     max_width: number
@@ -106,6 +108,7 @@ export async function pullConfig(): Promise<{ config: Config | null; frames: Fra
       },
       live_config: data.live_config,
       gif_config: data.gif_config,
+      print_debug: data.print_debug === true,
       preflight: data.preflight || {
         min_disk_gb: 5,
         max_outbox_age_hours: 24,

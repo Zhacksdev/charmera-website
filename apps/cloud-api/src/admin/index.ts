@@ -202,7 +202,7 @@ adminRouter.patch('/settings', async (req, res) => {
     const allowed = [
       'output_mode', 'print_mode', 'printer_name', 'copies', 'media_capacity',
       'media_warn_at', 'base_price', 'retention_days', 'timers', 'camera',
-      'live_config', 'gif_config', 'preflight'
+      'live_config', 'gif_config', 'preflight', 'print_debug'
     ]
     const patch: any = {}
     for (const k of allowed) if (k in req.body) patch[k] = req.body[k]

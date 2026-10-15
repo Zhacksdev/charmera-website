@@ -8,6 +8,7 @@ import { useStageTimer, useSessionFrame } from '../../hooks'
 import { FrameComposite } from '../../components/FrameComposite'
 import { PHOTO_FILTER_OPTIONS, filterCss, type PhotoFilter } from '../../lib/photo-filters'
 import { useUploadStates, waitForUploads } from '../../lib/upload-queue'
+import { PrintPreviewModal } from '../../components/PrintPreviewModal'
 import { StageHeader } from '../../components/StageHeader'
 
 const BOOTH_API = process.env.NEXT_PUBLIC_BOOTH_API_URL || ''
@@ -26,6 +27,7 @@ function PreviewContent() {
   const [loading, setLoading] = useState(false)
   const [config, setConfig] = useState<any>(null)
   const [filter, setFilter] = useState<PhotoFilter>('none')
+  const [showPrintPreview, setShowPrintPreview] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const uploads = useUploadStates(sessionId)
   const uploadsPending = Object.values(uploads).some((state) => state === 'uploading')
@@ -66,7 +68,8 @@ function PreviewContent() {
   }, [])
 
   const finalizingRef = useRef(false)
-  const handleFinalize = useCallback(async () => {
+  /** print: undefined = ikut mode cetak booth; true/false = pilihan dari preview cetak (mode debug) */
+  const handleFinalize = useCallback(async (print?: boolean) => {
     if (!sessionId || finalizingRef.current) return
     finalizingRef.current = true
     setLoading(true)
@@ -83,7 +86,7 @@ function PreviewContent() {
       const res = await fetch(`${BOOTH_API}/api/sessions/${sessionId}/finalize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ print: config?.print_mode === 'local' }),
+        body: JSON.stringify({ print: print ?? config?.print_mode === 'local' }),
       })
       
       if (res.ok) {
@@ -97,11 +100,18 @@ function PreviewContent() {
     finalizingRef.current = false
     setLoading(false)
   }, [sessionId, config, router])
+  // preview cetak memakai strip dengan filter & foto terakhir
+  const preparePrintPreview = useCallback(async () => {
+    await filterSaveRef.current
+    if (sessionId) await waitForUploads(sessionId)
+  }, [sessionId])
   const handleFinalizeRef = useRef(handleFinalize)
   handleFinalizeRef.current = handleFinalize
 
   const outputMode = config?.output_mode || 'photo_only'
   const showPrintButton = config?.print_mode === 'local'
+  // admin → Printer → Mode debug cetak: tampilkan halaman cetak dulu sebelum job masuk antrean
+  const printDebug = showPrintButton && config?.print_debug === true
   const capturedPhotos = Array.from(photos.values()).sort((first, second) => first.slot_index - second.slot_index)
 
   return (
@@ -137,7 +147,7 @@ function PreviewContent() {
 
       <div className="flex shrink-0 justify-center">
         <button
-          onClick={handleFinalize}
+          onClick={() => (printDebug ? setShowPrintPreview(true) : void handleFinalize())}
           disabled={loading}
           className="btn-primary min-w-[min(80vw,20rem)] px-10 text-2xl shadow-xl"
         >
@@ -146,6 +156,16 @@ function PreviewContent() {
       </div>
       {uploadsPending && !loading && <div className="text-center text-sm font-bold text-cream/80" role="status">Mengirim foto ke booth...</div>}
       {uploadError && <div role="alert" className="mx-auto mt-2 max-w-xl rounded-lg bg-cream px-4 py-3 text-center font-bold text-cherry">{uploadError}</div>}
+
+      {showPrintPreview && sessionId && (
+        <PrintPreviewModal
+          sessionId={sessionId}
+          beforeLoad={preparePrintPreview}
+          onPrint={() => { setShowPrintPreview(false); void handleFinalize(true) }}
+          onSkipPrint={() => { setShowPrintPreview(false); void handleFinalize(false) }}
+          onClose={() => setShowPrintPreview(false)}
+        />
+      )}
     </main>
   )
 }

@@ -1,7 +1,8 @@
-import { execFile } from 'child_process'
+﻿import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { join, basename } from 'path'
 import { mkdir, writeFile, unlink } from 'fs/promises'
+import { existsSync } from 'fs'
 import sharp from 'sharp'
 import { PDFDocument } from 'pdf-lib'
 import { z } from 'zod'
@@ -32,6 +33,32 @@ export interface PrinterSettings {
   print_scale: PrintScale
   /** '' = ukuran kertas default driver; selain itu nama kertas, mis. "A4", "A6", "4x6" */
   paper_size: string
+  /** penyesuaian bila hasil cetak terpotong/tidak center: skala tambahan (%) dan geser (mm, + = kanan/bawah) */
+  scale_pct: number
+  offset_x_mm: number
+  offset_y_mm: number
+}
+
+/**
+ * Ukuran kertas yang dikenal (mm, portrait). Bila paper_size salah satu dari ini, PDF dibuat seukuran
+ * kertas dan foto ditempatkan oleh booth (bukan driver) â€” hasil cetak = preview.
+ */
+export const PAPER_SIZES_MM: Record<string, [number, number]> = {
+  '4x6': [101.6, 152.4],
+  '10x15': [100, 150],
+  'a6': [105, 148],
+  '5x7': [127, 177.8],
+  'a5': [148, 210],
+  'a4': [210, 297],
+  'letter': [215.9, 279.4]
+}
+
+// nama kertas yang dikenali SumatraPDF (-print-settings paper=...); ukuran foto (4x6 dll.) tidak ada
+// di daftarnya, jadi untuk kertas foto ukuran diambil dari default driver
+const SUMATRA_PAPER: Record<string, string> = { a4: 'A4', a5: 'A5', a6: 'A6', letter: 'letter' }
+
+function knownPaper(paperSize: string): [number, number] | null {
+  return PAPER_SIZES_MM[paperSize.trim().toLowerCase()] || null
 }
 
 export interface PrinterInfo {
@@ -52,7 +79,10 @@ export const printerSettingsSchema = z.object({
   printer_name: z.string().trim().max(200),
   copies: z.number().int().min(1).max(10),
   print_scale: z.enum(['noscale', 'fit', 'shrink']),
-  paper_size: z.string().trim().max(50)
+  paper_size: z.string().trim().max(50),
+  scale_pct: z.number().int().min(50).max(150).default(100),
+  offset_x_mm: z.number().min(-50).max(50).default(0),
+  offset_y_mm: z.number().min(-50).max(50).default(0)
 })
 
 function readCacheJson(key: string): Record<string, any> | null {
@@ -79,8 +109,15 @@ export function getPrinterSettings(): PrinterSettings {
     printer_name: name,
     copies,
     print_scale: ['noscale', 'fit', 'shrink'].includes(raw.print_scale) ? raw.print_scale : 'noscale',
-    paper_size: typeof raw.paper_size === 'string' ? raw.paper_size.trim() : ''
+    paper_size: typeof raw.paper_size === 'string' ? raw.paper_size.trim() : '',
+    scale_pct: clampNumber(raw.scale_pct, 50, 150, 100),
+    offset_x_mm: clampNumber(raw.offset_x_mm, -50, 50, 0),
+    offset_y_mm: clampNumber(raw.offset_y_mm, -50, 50, 0)
   }
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback
 }
 
 export function savePrinterSettings(input: unknown): PrinterSettings {
@@ -128,7 +165,7 @@ async function listPrintersWindows(): Promise<PrinterInfo[]> {
 }
 
 async function listPrintersCups(): Promise<PrinterInfo[]> {
-  // lpstat keluar dengan kode != 0 bila tidak ada printer/default — tangkap output-nya saja
+  // lpstat keluar dengan kode != 0 bila tidak ada printer/default â€” tangkap output-nya saja
   const run = async (args: string[]) => {
     try {
       return (await execFileAsync('lpstat', args, { timeout: 10000 })).stdout
@@ -192,7 +229,7 @@ export async function getPrinterHealth(settings = getPrinterSettings()): Promise
   if (!target) {
     return settings.printer_name
       ? { status: 'error', message: `Printer "${settings.printer_name}" tidak ditemukan` }
-      : { status: 'error', message: 'Belum ada printer default di OS — pilih printer di panel operator' }
+      : { status: 'error', message: 'Belum ada printer default di OS â€” pilih printer di panel operator' }
   }
 
   if (!target.online) {
@@ -204,26 +241,132 @@ export async function getPrinterHealth(settings = getPrinterSettings()): Promise
 
 // ---------- Cetak ----------
 
-/** Bungkus gambar ke PDF satu halaman dengan ukuran fisik sesuai PRINT_DPI. Landscape diputar ke portrait. */
-async function buildPrintPdf(imagePath: string): Promise<string> {
+export interface PrintLayout {
+  /** ukuran halaman PDF (mm, portrait) */
+  page_w_mm: number
+  page_h_mm: number
+  /** posisi & ukuran foto di halaman (mm, dari kiri-atas) */
+  image_x_mm: number
+  image_y_mm: number
+  image_w_mm: number
+  image_h_mm: number
+  /** true = halaman = kertas yang dipilih, foto ditempatkan booth; false = halaman seukuran foto, driver yang menempatkan */
+  paper_known: boolean
+}
+
+const MM_PER_INCH = 25.4
+
+/** Foto siap cetak (landscape diputar ke portrait) + ukuran pikselnya */
+async function printableImage(imagePath: string): Promise<{ data: Buffer; width: number; height: number }> {
   const meta = await sharp(imagePath).metadata()
   let pipeline = sharp(imagePath)
   if ((meta.width || 0) > (meta.height || 0)) {
     pipeline = pipeline.rotate(90)
   }
   const { data, info } = await pipeline.jpeg({ quality: 95 }).toBuffer({ resolveWithObject: true })
+  return { data, width: info.width, height: info.height }
+}
+
+/** Satu-satunya hitungan tata letak â€” dipakai PDF cetak dan gambar preview, jadi keduanya selalu sama. */
+export function computePrintLayout(imageWpx: number, imageHpx: number, settings: PrinterSettings): PrintLayout {
+  const naturalW = (imageWpx / PRINT_DPI) * MM_PER_INCH
+  const naturalH = (imageHpx / PRINT_DPI) * MM_PER_INCH
+  const paper = knownPaper(settings.paper_size)
+
+  let pageW = naturalW
+  let pageH = naturalH
+  let base = 1
+  if (paper) {
+    ;[pageW, pageH] = paper
+    const fit = Math.min(pageW / naturalW, pageH / naturalH)
+    base = settings.print_scale === 'fit' ? fit : settings.print_scale === 'shrink' ? Math.min(1, fit) : 1
+  }
+
+  const scale = base * (settings.scale_pct / 100)
+  const w = naturalW * scale
+  const h = naturalH * scale
+  return {
+    page_w_mm: pageW,
+    page_h_mm: pageH,
+    image_x_mm: (pageW - w) / 2 + settings.offset_x_mm,
+    image_y_mm: (pageH - h) / 2 + settings.offset_y_mm,
+    image_w_mm: w,
+    image_h_mm: h,
+    paper_known: !!paper
+  }
+}
+
+const mmToPt = (mm: number) => (mm / MM_PER_INCH) * 72
+
+/** PDF satu halaman sesuai tata letak (kertas dikenal: seukuran kertas; selain itu seukuran foto). */
+async function buildPrintPdf(imagePath: string, settings: PrinterSettings): Promise<string> {
+  const { data, width, height } = await printableImage(imagePath)
+  const layout = computePrintLayout(width, height, settings)
 
   const pdf = await PDFDocument.create()
-  const widthPt = (info.width / PRINT_DPI) * 72
-  const heightPt = (info.height / PRINT_DPI) * 72
-  const page = pdf.addPage([widthPt, heightPt])
+  const page = pdf.addPage([mmToPt(layout.page_w_mm), mmToPt(layout.page_h_mm)])
   const image = await pdf.embedJpg(data)
-  page.drawImage(image, { x: 0, y: 0, width: widthPt, height: heightPt })
+  // PDF berkoordinat dari kiri-bawah
+  page.drawImage(image, {
+    x: mmToPt(layout.image_x_mm),
+    y: mmToPt(layout.page_h_mm - layout.image_y_mm - layout.image_h_mm),
+    width: mmToPt(layout.image_w_mm),
+    height: mmToPt(layout.image_h_mm)
+  })
 
   await mkdir(PRINT_DIR, { recursive: true })
   const pdfPath = join(PRINT_DIR, `${basename(imagePath).replace(/\.[^.]+$/, '')}_${Date.now()}.pdf`)
   await writeFile(pdfPath, await pdf.save())
   return pdfPath
+}
+
+const PREVIEW_PX_PER_MM = 4
+const SAFE_MARGIN_MM = 5
+
+/**
+ * Gambar preview halaman cetak: kertas, foto di posisinya (bagian di luar kertas terpotong seperti
+ * hasil cetak), garis tepi foto dan garis aman 5 mm dari tepi kertas.
+ */
+export async function renderPrintPreview(imagePath: string, settings: PrinterSettings): Promise<{ png: Buffer; layout: PrintLayout }> {
+  const { data, width, height } = await printableImage(imagePath)
+  const layout = computePrintLayout(width, height, settings)
+  const k = PREVIEW_PX_PER_MM
+  const pageW = Math.round(layout.page_w_mm * k)
+  const pageH = Math.round(layout.page_h_mm * k)
+
+  const imgW = Math.max(1, Math.round(layout.image_w_mm * k))
+  const imgH = Math.max(1, Math.round(layout.image_h_mm * k))
+  const imgX = Math.round(layout.image_x_mm * k)
+  const imgY = Math.round(layout.image_y_mm * k)
+
+  // bagian foto yang jatuh di atas kertas
+  const left = Math.max(0, imgX)
+  const top = Math.max(0, imgY)
+  const right = Math.min(pageW, imgX + imgW)
+  const bottom = Math.min(pageH, imgY + imgH)
+  const composites: sharp.OverlayOptions[] = []
+  if (right > left && bottom > top) {
+    const visible = await sharp(data)
+      .resize(imgW, imgH, { fit: 'fill' })
+      .extract({ left: left - imgX, top: top - imgY, width: right - left, height: bottom - top })
+      .png()
+      .toBuffer()
+    composites.push({ input: visible, left, top })
+  }
+
+  const safe = SAFE_MARGIN_MM * k
+  const overlay = Buffer.from(`<svg width='${pageW}' height='${pageH}' xmlns='http://www.w3.org/2000/svg'>
+    <rect x='${imgX}' y='${imgY}' width='${imgW}' height='${imgH}' fill='none' stroke='#D62839' stroke-width='3'/>
+    <rect x='${safe}' y='${safe}' width='${pageW - safe * 2}' height='${pageH - safe * 2}' fill='none' stroke='#2563EB' stroke-width='2' stroke-dasharray='12 8'/>
+    <rect x='1' y='1' width='${pageW - 2}' height='${pageH - 2}' fill='none' stroke='#26211F' stroke-width='2'/>
+  </svg>`)
+  composites.push({ input: overlay, left: 0, top: 0 })
+
+  const png = await sharp({ create: { width: pageW, height: pageH, channels: 3, background: '#FFFFFF' } })
+    .composite(composites)
+    .png()
+    .toBuffer()
+  return { png, layout }
 }
 
 const CUPS_SCALE: Record<PrintScale, string> = {
@@ -233,21 +376,26 @@ const CUPS_SCALE: Record<PrintScale, string> = {
 }
 
 async function sendPdfToPrinter(pdfPath: string, settings: PrinterSettings, copies: number): Promise<void> {
+  // kertas dikenal: PDF sudah seukuran kertas & foto sudah ditempatkan â€” printer cukup cetak 1:1
+  const paperKnown = !!knownPaper(settings.paper_size)
+  const scale: PrintScale = paperKnown ? 'noscale' : settings.print_scale
+
   if (process.platform === 'win32') {
     // pdf-to-printer membawa SumatraPDF: cetak senyap tanpa dialog
     const { print } = await import('pdf-to-printer')
+    const key = settings.paper_size.trim().toLowerCase()
     await print(pdfPath, {
       printer: settings.printer_name || undefined,
       copies,
-      scale: settings.print_scale,
-      paperSize: settings.paper_size || undefined,
+      scale,
+      paperSize: paperKnown ? SUMATRA_PAPER[key] : settings.paper_size || undefined,
       orientation: 'portrait',
       silent: true
     })
     return
   }
 
-  const args = ['-n', String(copies), '-o', `print-scaling=${CUPS_SCALE[settings.print_scale]}`]
+  const args = ['-n', String(copies), '-o', `print-scaling=${CUPS_SCALE[scale]}`]
   if (settings.printer_name) args.push('-d', settings.printer_name)
   if (settings.paper_size) args.push('-o', `media=${settings.paper_size}`)
   args.push(pdfPath)
@@ -256,19 +404,19 @@ async function sendPdfToPrinter(pdfPath: string, settings: PrinterSettings, copi
 
 export async function printImage(imagePath: string, copies: number, settings = getPrinterSettings()): Promise<void> {
   // printer hilang/tidak ada default: gagal dengan pesan yang bisa dibaca operator,
-  // bukan output mentah SumatraPDF/lp. Offline tetap dikirim — spooler OS menahannya.
+  // bukan output mentah SumatraPDF/lp. Offline tetap dikirim â€” spooler OS menahannya.
   // cek sebagai mode lokal: Test Print boleh dijalankan sebelum mode cetak diaktifkan
   const health = await getPrinterHealth({ ...settings, print_mode: 'local' })
   if (health.status === 'error') {
     throw new Error(health.message)
   }
 
-  const pdfPath = await buildPrintPdf(imagePath)
+  const pdfPath = await buildPrintPdf(imagePath, settings)
   try {
     await sendPdfToPrinter(pdfPath, settings, copies)
   } catch (err: any) {
     logger.error({ err, printer: settings.printer_name || '(default)' }, 'Printer command failed')
-    throw new Error(`Printer ${health.printer || ''} menolak job — cek driver, kertas, dan kabel`.replace('  ', ' '))
+    throw new Error(`Printer ${health.printer || ''} menolak job â€” cek driver, kertas, dan kabel`.replace('  ', ' '))
   } finally {
     await unlink(pdfPath).catch(() => {})
   }
@@ -293,7 +441,12 @@ export async function createTestPrintImage(): Promise<string> {
   </svg>`)
 
   await mkdir(PRINT_DIR, { recursive: true })
-  const path = join(PRINT_DIR, 'test_print.jpg')
-  await sharp(svg).withMetadata({ density: PRINT_DPI }).jpeg({ quality: 95 }).toFile(path)
+  // isi statis: dibuat sekali lalu dipakai ulang. Menulis ulang file yang sama gagal di Windows
+  // karena cache sharp masih memegang file dari Test Print/preview sebelumnya.
+  // Naikkan versi nama file bila isi SVG di atas diubah.
+  const path = join(PRINT_DIR, 'test_print_v2.jpg')
+  if (!existsSync(path)) {
+    await sharp(svg).withMetadata({ density: PRINT_DPI }).jpeg({ quality: 95 }).toFile(path)
+  }
   return path
 }

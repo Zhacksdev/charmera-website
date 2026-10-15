@@ -72,6 +72,8 @@ deviceRouter.get('/config', async (req, res) => {
       live_config: settings.live_config,
       gif_config: settings.gif_config,
       preflight: settings.preflight,
+      // kolom dari migrasi 20260101000003; undefined bila migrasi belum dijalankan = mati
+      print_debug: settings.print_debug === true,
       frames: withUrls
     })
   } catch (err: any) {

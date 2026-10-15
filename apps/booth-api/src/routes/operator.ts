@@ -5,7 +5,7 @@ import crypto from 'crypto'
 import { ZodError } from 'zod'
 import { testPrint } from '../services/print-worker.js'
 import { retryFailedOutbox } from '../services/sync-worker.js'
-import { getPrinterSettings, savePrinterSettings, listPrinters, getPrinterHealth } from '../services/printer.js'
+import { getPrinterSettings, savePrinterSettings, listPrinters, getPrinterHealth, printerSettingsSchema, renderPrintPreview, createTestPrintImage } from '../services/printer.js'
 
 const router = Router()
 
@@ -97,6 +97,19 @@ router.post('/test-print', async (req, res) => {
   } catch (err) {
     logger.error({ err }, 'Test print error')
     res.status(500).json({ error: 'Test print failed' })
+  }
+})
+
+// Preview halaman uji dengan pengaturan di form (belum disimpan): atur geser/skala tanpa buang kertas
+router.post('/print-preview', async (req, res) => {
+  try {
+    const parsed = printerSettingsSchema.safeParse({ ...getPrinterSettings(), ...(req.body || {}) })
+    if (!parsed.success) return res.status(400).json({ error: 'Pengaturan printer tidak valid' })
+    const { png, layout } = await renderPrintPreview(await createTestPrintImage(), parsed.data)
+    res.json({ image: `data:image/png;base64,${png.toString('base64')}`, layout })
+  } catch (err) {
+    logger.error({ err }, 'Print preview error')
+    res.status(500).json({ error: 'Gagal membuat preview cetak' })
   }
 })
 
