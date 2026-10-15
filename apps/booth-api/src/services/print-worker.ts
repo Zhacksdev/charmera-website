@@ -2,6 +2,8 @@ import { db } from '../db/index.js'
 import { logger } from './logger.js'
 import { getConfig } from './config.js'
 import { getPrinterSettings, printImage, createTestPrintImage } from './printer.js'
+import { existsSync } from 'fs'
+import { v4 as uuidv4 } from 'uuid'
 
 const MAX_ATTEMPTS = 3
 
@@ -100,6 +102,37 @@ export function startPrintWorker() {
 
   setInterval(processPrintJobs, 3000)
   logger.info('Print worker started')
+}
+
+/**
+ * Cetak ulang sesi (dashboard admin / panel operator). Job lama diantre ulang; sesi yang belum pernah
+ * dicetak (mode digital saat itu, atau "Lewati cetak") dibuatkan job baru — selama file strip masih ada.
+ */
+export function queueReprint(sessionId: string): { job_id: string; created: boolean } {
+  const session = db.prepare('SELECT id FROM sessions WHERE id = ?').get(sessionId)
+  if (!session) throw new Error('Sesi tidak ada di booth ini')
+
+  const strip = db.prepare(`SELECT path FROM outputs WHERE session_id = ? AND type = 'strip' AND status = 'done'`).get(sessionId) as { path: string } | undefined
+  if (!strip || !existsSync(strip.path)) {
+    throw new Error('File strip sesi ini sudah tidak ada di laptop booth (dihapus pembersihan disk)')
+  }
+
+  const job = db.prepare('SELECT id, status FROM print_jobs WHERE session_id = ?').get(sessionId) as { id: string; status: string } | undefined
+  if (job) {
+    if (job.status === 'printing') throw new Error('Sesi ini sedang dicetak')
+    db.prepare(`UPDATE print_jobs SET status = 'queued', attempts = 0, error_message = NULL, finished_at = NULL WHERE id = ?`).run(job.id)
+    logger.info({ session_id: sessionId, job_id: job.id }, 'Reprint queued')
+    return { job_id: job.id, created: false }
+  }
+
+  const settings = getPrinterSettings()
+  const id = uuidv4()
+  db.prepare(`
+    INSERT INTO print_jobs (id, session_id, status, printer_name, copies, created_at)
+    VALUES (?, ?, 'queued', ?, ?, ?)
+  `).run(id, sessionId, settings.printer_name || 'default', settings.copies, new Date().toISOString())
+  logger.info({ session_id: sessionId, job_id: id }, 'Reprint queued (new print job)')
+  return { job_id: id, created: true }
 }
 
 export async function testPrint(): Promise<{ ok: boolean; error?: string }> {

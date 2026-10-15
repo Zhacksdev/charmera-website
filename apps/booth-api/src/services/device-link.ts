@@ -4,7 +4,7 @@ import { db } from '../db/index.js'
 import { logger } from './logger.js'
 import { getConfig } from './config.js'
 import { getPrinterHealth } from './printer.js'
-import { testPrint } from './print-worker.js'
+import { testPrint, queueReprint } from './print-worker.js'
 import { retryFailedOutbox } from './sync-worker.js'
 
 // Heartbeat (status booth untuk halaman Kesehatan admin) dan eksekusi perintah dashboard
@@ -15,7 +15,8 @@ const DEVICE_KEY = process.env.DEVICE_KEY || ''
 const APP_VERSION = require('../../package.json').version as string
 
 const HEARTBEAT_INTERVAL_MS = 60000
-const COMMAND_POLL_INTERVAL_MS = 30000
+// perintah dashboard (Reprint, Test Print) terasa langsung tanpa membebani cloud
+const COMMAND_POLL_INTERVAL_MS = 10000
 
 function deviceFetch(path: string, init: RequestInit = {}) {
   return fetch(`${DEVICE_API_URL}/api/device${path}`, {
@@ -84,12 +85,8 @@ async function runCommand(cmd: { id: string; type: string; session_id?: string |
 
   if (cmd.type === 'reprint') {
     if (!cmd.session_id) throw new Error('session_id kosong')
-    const updated = db.prepare(`
-      UPDATE print_jobs SET status = 'queued', attempts = 0, error_message = NULL WHERE session_id = ?
-    `).run(cmd.session_id)
-    if (updated.changes === 0) {
-      throw new Error('Sesi tidak punya job cetak di booth ini')
-    }
+    // sesi yang belum pernah dicetak dibuatkan job baru; pesan error tampil di dashboard
+    queueReprint(cmd.session_id)
     return
   }
 

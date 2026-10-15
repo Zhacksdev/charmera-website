@@ -422,6 +422,23 @@ adminRouter.post('/commands', async (req, res) => {
   }
 })
 
+// Status perintah — dashboard menunggu hasil dari booth (dijalankan saat booth polling, ±10 dtk)
+adminRouter.get('/commands/:id', async (req, res) => {
+  try {
+    const { data, error } = await getSupabase()
+      .from('device_commands')
+      .select('id, type, session_id, status, error_message, created_at, done_at')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    if (error) return res.status(500).json({ error: error.message })
+    if (!data) return res.status(404).json({ error: 'Perintah tidak ditemukan' })
+    res.json(data)
+  } catch (err: any) {
+    res.status(503).json({ error: err.message })
+  }
+})
+
 // ---- helpers ----
 
 async function bumpConfigVersion(boothId: string) {

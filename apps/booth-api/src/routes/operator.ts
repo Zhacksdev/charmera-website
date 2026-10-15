@@ -3,7 +3,7 @@ import { db } from '../db/index.js'
 import { logger } from '../services/logger.js'
 import crypto from 'crypto'
 import { ZodError } from 'zod'
-import { testPrint } from '../services/print-worker.js'
+import { testPrint, queueReprint } from '../services/print-worker.js'
 import { retryFailedOutbox } from '../services/sync-worker.js'
 import { getPrinterSettings, savePrinterSettings, listPrinters, getPrinterHealth, printerSettingsSchema, renderPrintPreview, createTestPrintImage } from '../services/printer.js'
 
@@ -134,27 +134,12 @@ router.post('/retry-sync', (req, res) => {
 router.post('/reprint/:sessionId', (req, res) => {
   try {
     const { sessionId } = req.params
-    
-    const job = db.prepare(`
-      SELECT * FROM print_jobs WHERE session_id = ?
-    `).get(sessionId)
-    
-    if (!job) {
-      return res.status(404).json({ error: 'Print job not found' })
-    }
-    
-    db.prepare(`
-      UPDATE print_jobs 
-      SET status = 'queued', attempts = 0, error_message = NULL
-      WHERE session_id = ?
-    `).run(sessionId)
-    
-    logger.info({ session_id: sessionId }, 'Reprint triggered')
-    
-    res.json({ status: 'queued', message: 'Reprint queued' })
-  } catch (err) {
+    // sesi yang belum pernah dicetak dibuatkan job baru (sama dengan Reprint dari dashboard)
+    const result = queueReprint(sessionId)
+    res.json({ status: 'queued', message: 'Reprint queued', ...result })
+  } catch (err: any) {
     logger.error({ err }, 'Reprint failed')
-    res.status(500).json({ error: 'Reprint failed' })
+    res.status(400).json({ error: err?.message || 'Reprint failed' })
   }
 })
 

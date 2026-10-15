@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { adminFetch, adminSend, errorMessage } from '../../../lib/supabase'
+import { sendCommandAndWait } from '../../../lib/commands'
 
 interface PrinterSettings {
   print_mode: 'digital_only' | 'local' | 'custom_api'
@@ -82,16 +83,21 @@ export default function PrinterPage() {
     }
   }
 
+  const [testPrintStatus, setTestPrintStatus] = useState<string | null>(null)
+
   const handleTestPrint = async () => {
+    setTestPrintStatus('Menunggu booth...')
     try {
-      await adminSend('/api/admin/commands', {
-        method: 'POST',
-        body: JSON.stringify({ type: 'test_print' })
-      })
-      alert('Test print command sent')
+      // ditunggu sampai booth menjalankannya, bukan sekadar "perintah terkirim"
+      const result = await sendCommandAndWait('test_print')
+      setTestPrintStatus(
+        result.status === 'done' ? '✓ Test print terkirim ke printer booth' :
+        result.status === 'failed' ? `✕ ${result.error || 'Test print gagal di booth'}` :
+        '✕ Booth tidak merespons dalam 1 menit — pastikan booth menyala dan online'
+      )
     } catch (err) {
       console.error('Failed to send test print:', err)
-      alert(`Gagal mengirim perintah: ${errorMessage(err, 'unknown')}`)
+      setTestPrintStatus(`✕ Gagal mengirim perintah: ${errorMessage(err, 'unknown')}`)
     }
   }
 
@@ -164,12 +170,14 @@ export default function PrinterPage() {
           {printer.print_mode !== 'digital_only' && (
             <button
               onClick={handleTestPrint}
-              className="bg-char text-cream px-6 py-3 rounded-lg font-semibold"
+              disabled={testPrintStatus === 'Menunggu booth...'}
+              className="bg-char text-cream px-6 py-3 rounded-lg font-semibold disabled:opacity-50"
             >
               Test Print
             </button>
           )}
         </div>
+        {testPrintStatus && <p role="status" className="mt-3 text-sm">{testPrintStatus}</p>}
       </div>
 
       {/* debug cetak: kiosk menampilkan preview halaman cetak (kertas + posisi foto) sebelum job masuk antrean */}

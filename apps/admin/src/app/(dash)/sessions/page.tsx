@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { adminFetch, adminSend, errorMessage } from '../../../lib/supabase'
+import { adminFetch, errorMessage } from '../../../lib/supabase'
+import { sendCommandAndWait } from '../../../lib/commands'
 
 interface Session {
   id: string
@@ -44,16 +45,22 @@ export default function SessionsPage() {
     return true
   })
 
+  // hasil reprint per sesi: ditunggu sampai booth benar-benar menjalankan perintahnya
+  const [reprintState, setReprintState] = useState<Record<string, { state: 'waiting' | 'done' | 'failed'; message: string }>>({})
+
   const handleReprint = async (sessionId: string) => {
+    const set = (state: 'waiting' | 'done' | 'failed', message: string) =>
+      setReprintState((current) => ({ ...current, [sessionId]: { state, message } }))
+
+    set('waiting', 'Menunggu booth...')
     try {
-      await adminSend('/api/admin/commands', {
-        method: 'POST',
-        body: JSON.stringify({ type: 'reprint', session_id: sessionId })
-      })
-      alert('Reprint command sent')
+      const result = await sendCommandAndWait('reprint', sessionId)
+      if (result.status === 'done') set('done', 'Masuk antrean cetak booth')
+      else if (result.status === 'failed') set('failed', result.error || 'Booth gagal mencetak ulang')
+      else set('failed', 'Booth tidak merespons dalam 1 menit — pastikan booth menyala dan online')
     } catch (err) {
       console.error('Failed to reprint:', err)
-      alert(`Gagal mengirim perintah: ${errorMessage(err, 'unknown')}`)
+      set('failed', `Gagal mengirim perintah: ${errorMessage(err, 'unknown')}`)
     }
   }
 
@@ -122,12 +129,27 @@ export default function SessionsPage() {
                 <td className="py-2 px-3">Rp {session.price.toLocaleString('id-ID')}</td>
                 <td className="py-2 px-3">{new Date(session.started_at).toLocaleString('id-ID')}</td>
                 <td className="py-2 px-3">
-                  <button
-                    onClick={() => handleReprint(session.id)}
-                    className="px-2 py-1 text-xs bg-cherry text-cream rounded"
-                  >
-                    Reprint
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => handleReprint(session.id)}
+                      disabled={reprintState[session.id]?.state === 'waiting'}
+                      className="px-2 py-1 text-xs bg-cherry text-cream rounded disabled:opacity-50"
+                    >
+                      {reprintState[session.id]?.state === 'waiting' ? 'Mengirim...' : 'Reprint'}
+                    </button>
+                    {reprintState[session.id] && (
+                      <span
+                        role="status"
+                        className={`text-xs ${
+                          reprintState[session.id].state === 'failed' ? 'text-cherry font-semibold' :
+                          reprintState[session.id].state === 'done' ? 'text-emerald-700 font-semibold' : 'text-char opacity-75'
+                        }`}
+                      >
+                        {reprintState[session.id].state === 'done' ? '✓ ' : reprintState[session.id].state === 'failed' ? '✕ ' : ''}
+                        {reprintState[session.id].message}
+                      </span>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
