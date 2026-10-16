@@ -23,7 +23,9 @@ export const canvasSchema = z.object({
 export const layoutSchema = z.object({
   canvas: canvasSchema,
   slots: z.array(slotSchema).min(1),
-  text_area: textAreaSchema.optional()
+  text_area: textAreaSchema.optional(),
+  // cut = dua strip dalam 4R untuk dipotong (foto diulang tiap strip), non_cut = satu lembar utuh
+  category: z.enum(['cut', 'non_cut']).optional()
 })
 
 export const timersSchema = z.object({

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { adminFetch, adminSend, errorMessage } from '../../../lib/supabase'
-import { defaultPattern, detectPattern, renumberSlots, shotCount, type LayoutSlot, type SlotPattern } from '../../../lib/slot-numbering'
+import { applyCategory, frameCategory, shotCount, CATEGORY_HINT, CATEGORY_LABEL, type FrameCategory, type LayoutSlot } from '../../../lib/slot-numbering'
 import { TextAreaEditor, type TextArea } from '../../../components/TextAreaEditor'
 
 interface Frame {
@@ -16,13 +16,15 @@ interface Frame {
   canvas_w?: number
   canvas_h?: number
   image_url?: string | null
-  layout?: { slots?: LayoutSlot[]; text_area?: TextArea; canvas?: { w: number; h: number }; [key: string]: unknown }
+  layout?: { slots?: LayoutSlot[]; text_area?: TextArea; canvas?: { w: number; h: number }; category?: FrameCategory; [key: string]: unknown }
 }
 
 export default function FramesPage() {
   const [frames, setFrames] = useState<Frame[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  // jenis frame untuk upload berikutnya (cut = dua strip dipotong, non-cut = satu lembar utuh)
+  const [uploadCategory, setUploadCategory] = useState<FrameCategory>('cut')
   const [editingText, setEditingText] = useState<Frame | null>(null)
   const [savingText, setSavingText] = useState(false)
 
@@ -93,14 +95,14 @@ export default function FramesPage() {
           orientation: analysis.orientation,
           canvas_w: analysis.canvas?.w,
           canvas_h: analysis.canvas?.h,
-          // frame berisi beberapa strip sama panjang: foto 1 2 3 diulang tiap strip (1 2 3 · 1 2 3)
-          layout: { ...analysis.layout, slots: renumberSlots(analysis.layout.slots, defaultPattern(analysis.layout.slots)) },
+          // kategori dipilih admin sebelum upload: cut = 1 2 3 · 1 2 3, non-cut = foto berbeda tiap slot
+          layout: applyCategory(analysis.layout, uploadCategory),
           sort_order: frames.length,
           image_base64: analysis.keyed_preview
         })
       })
 
-      alert(`Frame tersimpan: ${analysis.slots.length} slot terdeteksi, ${shotCount(renumberSlots(analysis.layout.slots, defaultPattern(analysis.layout.slots)))} foto per sesi`)
+      alert(`Frame ${CATEGORY_LABEL[uploadCategory]} tersimpan: ${analysis.slots.length} slot terdeteksi, ${shotCount(applyCategory(analysis.layout, uploadCategory).slots)} foto per sesi`)
       fetchFrames()
     } catch (err) {
       console.error('Upload failed:', err)
@@ -111,17 +113,17 @@ export default function FramesPage() {
     }
   }
 
-  const handleSlotPattern = async (frame: Frame, pattern: SlotPattern) => {
+  const handleCategory = async (frame: Frame, category: FrameCategory) => {
     const slots = frame.layout?.slots
     if (!slots?.length) return
     try {
       await adminSend(`/api/admin/frames/${frame.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ layout: { ...frame.layout, slots: renumberSlots(slots, pattern) } })
+        body: JSON.stringify({ layout: applyCategory({ ...frame.layout, slots }, category) })
       })
       fetchFrames()
     } catch (err) {
-      alert(`Gagal mengubah urutan foto: ${errorMessage(err, 'unknown')}`)
+      alert(`Gagal mengubah kategori frame: ${errorMessage(err, 'unknown')}`)
     }
   }
 
@@ -143,19 +145,39 @@ export default function FramesPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         <h1 className="text-2xl font-bold">Frame</h1>
-        <label className="bg-cherry text-cream px-4 py-2 rounded-lg cursor-pointer">
-          {uploading ? 'Uploading...' : 'Upload Frame'}
-          <input
-            type="file"
-            accept="image/png"
-            onChange={handleUpload}
-            className="hidden"
-            disabled={uploading}
-          />
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* kategori dipilih sebelum memilih file — menentukan urutan foto di slot */}
+          <div role="radiogroup" aria-label="Jenis frame" className="flex items-center gap-1 rounded-lg bg-line p-1 text-sm">
+            <span className="px-2 font-semibold text-char opacity-75">Jenis</span>
+            {(['cut', 'non_cut'] as const).map((category) => (
+              <button
+                key={category}
+                role="radio"
+                aria-checked={uploadCategory === category}
+                title={CATEGORY_HINT[category]}
+                onClick={() => setUploadCategory(category)}
+                className={`rounded-md px-3 py-1 font-semibold ${uploadCategory === category ? 'bg-cherry text-cream' : 'text-char'}`}
+                style={{ minHeight: 0 }}
+              >
+                {CATEGORY_LABEL[category]}
+              </button>
+            ))}
+          </div>
+          <label className="bg-cherry text-cream px-4 py-2 rounded-lg cursor-pointer">
+            {uploading ? 'Uploading...' : `Upload Frame ${CATEGORY_LABEL[uploadCategory]}`}
+            <input
+              type="file"
+              accept="image/png"
+              onChange={handleUpload}
+              className="hidden"
+              disabled={uploading}
+            />
+          </label>
+        </div>
       </div>
+      <p className="mb-4 -mt-3 text-sm text-char opacity-75">{CATEGORY_HINT[uploadCategory]}.</p>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {frames.map((frame) => (
@@ -164,7 +186,7 @@ export default function FramesPage() {
               <div>
                 <h3 className="font-bold">{frame.name}</h3>
                 <p className="text-sm text-char opacity-75">
-                  {frame.orientation} · {frame.slot_count || '?'} slot · {frame.layout?.slots?.length ? shotCount(frame.layout.slots) : '?'} foto
+                  {CATEGORY_LABEL[frameCategory(frame.layout)]} · {frame.slot_count || '?'} slot · {frame.layout?.slots?.length ? shotCount(frame.layout.slots) : '?'} foto
                 </p>
               </div>
               <button
@@ -179,21 +201,18 @@ export default function FramesPage() {
             
             {(frame.layout?.slots?.length ?? 0) > 1 && (
               <div className="mb-3">
-                <p className="text-xs font-semibold text-char opacity-75 mb-1">Urutan foto di slot</p>
+                <p className="text-xs font-semibold text-char opacity-75 mb-1">Kategori frame</p>
                 <div className="flex gap-2">
-                  {([
-                    { pattern: 'per_column', label: '1 2 3 · 1 2 3', hint: 'Foto sama di tiap strip' },
-                    { pattern: 'per_slot', label: '1 – ' + frame.layout!.slots!.length, hint: 'Foto berbeda tiap slot' },
-                  ] as const).map(({ pattern, label, hint }) => {
-                    const active = detectPattern(frame.layout!.slots!) === pattern
+                  {(['cut', 'non_cut'] as const).map((category) => {
+                    const active = frameCategory(frame.layout) === category
                     return (
                       <button
-                        key={pattern}
-                        onClick={() => !active && handleSlotPattern(frame, pattern)}
-                        title={hint}
+                        key={category}
+                        onClick={() => !active && handleCategory(frame, category)}
+                        title={CATEGORY_HINT[category]}
                         className={`flex-1 rounded px-2 py-1 text-xs ${active ? 'bg-cherry text-cream' : 'bg-line text-char'}`}
                       >
-                        {label}
+                        {CATEGORY_LABEL[category]}{category === 'cut' ? ' (1 2 3 · 1 2 3)' : ` (1 – ${frame.layout!.slots!.length})`}
                       </button>
                     )
                   })}

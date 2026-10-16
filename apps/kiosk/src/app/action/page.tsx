@@ -69,6 +69,13 @@ function ActionContent() {
   const allSlotsFilled = totalSlots > 0 && nextShot >= totalSlots
   const failedShots = Object.entries(uploads).filter(([, state]) => state === 'failed').map(([slot]) => Number(slot))
 
+  // kamera dipotong ke rasio slot yang sedang/akan difoto: foto & klip dirender "cover" dari tengah,
+  // jadi area kamera yang terlihat = area yang benar-benar masuk ke slot
+  const activeShot = capturingShot ?? (allSlotsFilled ? Math.max(0, totalSlots - 1) : nextShot)
+  const activeSlotNumber = shotNumbers(slots)[activeShot]
+  const activeSlot = slots.find((slot) => slot.n === activeSlotNumber)
+  const cameraAspect = activeSlot && activeSlot.h > 0 ? activeSlot.w / activeSlot.h : 4 / 3
+
   useEffect(() => {
     startCamera()
     return () => stopCamera()
@@ -332,7 +339,10 @@ function ActionContent() {
           />}
         </div>
         <div className="fit-box">
-        <div className="fit-item relative aspect-[4/3] overflow-hidden rounded-[24px] border-4 border-cream bg-char shadow-xl" style={{ ['--ar' as string]: 4 / 3 }}>
+        <div
+          className="fit-item relative overflow-hidden rounded-[24px] border-4 border-cream bg-char shadow-xl"
+          style={{ aspectRatio: cameraAspect, ['--ar' as string]: cameraAspect }}
+        >
           <video
             ref={videoRef}
             autoPlay
@@ -353,6 +363,10 @@ function ActionContent() {
           >
             ⇋ {flip ? 'Non-mirror' : 'Mirror'}
           </button>
+
+          {isReady && totalSlots > 0 && (
+            <div className="camera-area-label" aria-hidden="true">Area foto {Math.min(activeShot + 1, totalSlots)}</div>
+          )}
 
           {isCapturing && countdown > 0 && (
             <div className="countdown-overlay">

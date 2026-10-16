@@ -58,6 +58,32 @@ export function defaultPattern(slots: LayoutSlot[]): SlotPattern {
     : 'per_slot'
 }
 
+/**
+ * Kategori frame (dipilih admin saat upload):
+ * - cut     : kertas 4R berisi beberapa strip yang dipotong — tiap strip berisi foto yang sama (1 2 3 · 1 2 3)
+ * - non_cut : satu lembar utuh — tiap slot foto berbeda (1 – n)
+ */
+export type FrameCategory = 'cut' | 'non_cut'
+
+export const CATEGORY_LABEL: Record<FrameCategory, string> = { cut: 'Cut', non_cut: 'Non-cut' }
+export const CATEGORY_HINT: Record<FrameCategory, string> = {
+  cut: 'Dua strip dalam satu 4R untuk dipotong — foto 1 2 3 diulang di tiap strip',
+  non_cut: 'Satu lembar utuh — tiap slot berisi foto berbeda',
+}
+
+const CATEGORY_PATTERN: Record<FrameCategory, SlotPattern> = { cut: 'per_column', non_cut: 'per_slot' }
+
+/** Kategori tersimpan di layout; frame lama tanpa kategori ditebak dari penomoran slotnya */
+export function frameCategory(layout: { slots?: LayoutSlot[]; category?: unknown } | undefined): FrameCategory {
+  if (layout?.category === 'cut' || layout?.category === 'non_cut') return layout.category
+  return layout?.slots && detectPattern(layout.slots) === 'per_column' ? 'cut' : 'non_cut'
+}
+
+/** Layout dengan kategori + nomor slot sesuai kategori itu */
+export function applyCategory<L extends { slots: LayoutSlot[] }>(layout: L, category: FrameCategory): L & { category: FrameCategory } {
+  return { ...layout, category, slots: renumberSlots(layout.slots, CATEGORY_PATTERN[category]) }
+}
+
 export function shotCount(slots: LayoutSlot[]): number {
   return new Set(slots.map((s) => s.n)).size
 }

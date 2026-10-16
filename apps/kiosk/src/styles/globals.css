@@ -235,6 +235,21 @@ button:disabled {
   box-shadow: 0 4px 12px rgba(38, 33, 31, 0.25);
 }
 
+/* label di kotak kamera: kotak = persis area yang masuk ke slot foto */
+.camera-area-label {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 3;
+  border-radius: 999px;
+  background: rgba(38, 33, 31, 0.7);
+  padding: 4px 12px;
+  color: var(--cream);
+  font-size: 0.85rem;
+  font-weight: 800;
+  pointer-events: none;
+}
+
 .mirror-toggle {
   position: absolute;
   top: 12px;
