@@ -167,6 +167,16 @@ export async function pullConfig(): Promise<{ config: Config | null; frames: Fra
       INSERT OR REPLACE INTO config_cache (key, value, version, fetched_at)
       VALUES ('frames', ?, 0, ?)
     `).run(JSON.stringify(frames), new Date().toISOString())
+
+    // arsip semua frame yang pernah aktif: sesi yang sedang berjalan tetap bisa dirender walau
+    // frame-nya baru dihapus/dinonaktifkan admin. Kiosk hanya menampilkan 'frames' (yang aktif).
+    const archiveRow = db.prepare(`SELECT value FROM config_cache WHERE key = 'frames_archive'`).get() as { value: string } | undefined
+    const archive: Record<string, Frame> = archiveRow ? JSON.parse(archiveRow.value) : {}
+    for (const frame of frames) archive[frame.id] = frame
+    db.prepare(`
+      INSERT OR REPLACE INTO config_cache (key, value, version, fetched_at)
+      VALUES ('frames_archive', ?, 0, ?)
+    `).run(JSON.stringify(archive), new Date().toISOString())
     
     logger.info({ config_version: config.config_version, frame_count: frames.length }, 'Config pulled')
     

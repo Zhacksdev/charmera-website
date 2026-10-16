@@ -156,7 +156,10 @@ async function processRenderJob(job: any): Promise<string> {
   }
   
   const framesList = JSON.parse(frames.value)
+  // frame yang baru dihapus/dinonaktifkan admin masih ada di arsip — sesi yang sudah memilihnya tetap jadi
+  const archive = db.prepare(`SELECT value FROM config_cache WHERE key = 'frames_archive'`).get() as { value: string } | undefined
   const frame = framesList.find((f: any) => f.id === session.frame_id)
+    || (archive ? JSON.parse(archive.value)[session.frame_id] : undefined)
   
   if (!frame) {
     throw new Error('Frame not found')

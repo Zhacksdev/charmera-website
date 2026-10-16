@@ -127,6 +127,25 @@ export default function FramesPage() {
     }
   }
 
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const handleDelete = async (frame: Frame) => {
+    const ok = window.confirm(
+      `Hapus frame "${frame.name}"?\n\nFrame hilang dari pilihan kiosk dalam ±1 menit. Sesi lama yang memakai frame ini tetap tersimpan. Tindakan ini tidak bisa dibatalkan — pilih Nonaktif bila hanya ingin menyembunyikannya.`
+    )
+    if (!ok) return
+    setDeletingId(frame.id)
+    try {
+      await adminSend(`/api/admin/frames/${frame.id}`, { method: 'DELETE' })
+      if (editingText?.id === frame.id) setEditingText(null)
+      setFrames((current) => current.filter((f) => f.id !== frame.id))
+    } catch (err) {
+      alert(`Gagal menghapus frame: ${errorMessage(err, 'unknown')}`)
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   const handleToggleActive = async (frame: Frame) => {
     try {
       await adminFetch(`/api/admin/frames/${frame.id}`, {
@@ -240,6 +259,17 @@ export default function FramesPage() {
                 +Rp {frame.extra_price.toLocaleString('id-ID')}
               </p>
             )}
+
+            <div className="mt-3 flex justify-end border-t border-line pt-3">
+              <button
+                onClick={() => handleDelete(frame)}
+                disabled={deletingId === frame.id}
+                className="rounded px-3 py-1 text-xs font-semibold text-cherry hover:bg-rose/40 disabled:opacity-50"
+                style={{ minHeight: 0 }}
+              >
+                {deletingId === frame.id ? 'Menghapus...' : 'Hapus frame'}
+              </button>
+            </div>
           </div>
         ))}
 
